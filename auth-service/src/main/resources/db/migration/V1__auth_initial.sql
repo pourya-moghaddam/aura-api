@@ -1,0 +1,27 @@
+CREATE TABLE users (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  email VARCHAR(255) UNIQUE,
+  phone VARCHAR(20) NOT NULL UNIQUE,
+  password VARCHAR(255),
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE roles (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name VARCHAR(50) NOT NULL UNIQUE,
+  description TEXT
+);
+
+CREATE TABLE user_roles (
+  user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+  role_id BIGINT REFERENCES roles(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, role_id)
+);
+
+ALTER TABLE users
+  ADD CONSTRAINT uk_users_email UNIQUE (email);
+
+ALTER TABLE users
+  ADD CONSTRAINT uk_users_phone UNIQUE (phone);

@@ -1,0 +1,29 @@
+server:
+  port: 8082
+
+aura:
+  notification:
+    sms:
+      sms-ir:
+        api-key: "KqPGIqGFg2b23FXXDnzmXyPq0Ta4VYyrQL0XhrxQu1lfO0Rc"
+        otp-template-id: 823095
+        base-url: "https://api.sms.ir/v1"
+        verify-path: "/send/verify"
+        otp-parameter-name: "OTP"
+  kafka:
+    topics:
+      otp-requested: ${KAFKA_TOPIC_OTP_REQUESTED:otp-requested-topic}
+spring:
+  application:
+    name: notification-service
+  cloud:
+    function:
+      definition: otpRequestedIn
+    stream:
+      bindings:
+        otpRequestedIn-in-0:
+          destination: ${aura.kafka.topics.otp-requested}
+          group: notification-group
+      kafka:
+        binder:
+          brokers: localhost:9092

@@ -16,11 +16,16 @@
         <spring.boot.version>4.1.0</spring.boot.version>
         <spring.cloud.version>2025.1.2</spring.cloud.version>
         <testcontainers.version>1.20.5</testcontainers.version>
+        <lombok.version>1.18.42</lombok.version>
     </properties>
 
     <modules>
+        <module>common</module>
         <module>auth-service</module>
+        <module>notification-service</module>
+        <module>catalog-service</module>
         <module>discovery-service</module>
+        <module>gateway-service</module>
     </modules>
 
     <dependencyManagement>
