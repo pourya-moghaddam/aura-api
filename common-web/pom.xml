@@ -35,6 +35,26 @@
             <artifactId>spring-boot-starter-validation</artifactId>
             <scope>provided</scope>
         </dependency>
+        <!--
+          Only for Page in PageResponse. `provided` for the same reason as spring-boot-starter-web
+          above: not every consumer of this module is data-backed (the gateway isn't), and every
+          one that is already pulls this transitively via spring-boot-starter-data-jpa.
+        -->
+        <dependency>
+            <groupId>org.springframework.data</groupId>
+            <artifactId>spring-data-commons</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <!--
+          For AccessDeniedException / AuthenticationException in GlobalExceptionHandler. `provided`
+          as above; every servlet consumer with @PreAuthorize endpoints already has
+          spring-boot-starter-security.
+        -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-core</artifactId>
+            <scope>provided</scope>
+        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
