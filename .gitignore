@@ -4,6 +4,14 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+### Secrets ###
+# Holds the JWT signing key, database passwords, and the SMS provider key.
+.env
+.env.*
+!.env.example
+*.pem
+*.der
+
 ### STS ###
 .apt_generated
 .classpath
@@ -31,3 +39,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Local scratch ###
+conv.txt

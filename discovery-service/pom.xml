@@ -11,11 +11,17 @@
 
     <artifactId>discovery-service</artifactId>
     <packaging>jar</packaging>
+    <name>Aura :: Discovery Service</name>
 
     <dependencies>
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-netflix-eureka-server</artifactId>
+        </dependency>
+        <!-- Required for the Compose healthcheck that gates every other service's startup. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
         <!-- Testing -->
         <dependency>

@@ -1,0 +1,88 @@
+# Production overrides.
+#
+#   docker compose -f compose.yaml -f compose.prod.yaml up -d
+#
+# Differences from the dev stack that matter:
+#   - only the gateway is reachable from outside the Docker network
+#   - the prod profile is active, which makes auth-service refuse to start without a real
+#     signing keypair rather than quietly generating a throwaway one
+#   - logs are structured JSON for shipping
+#   - every service has a memory ceiling, so one leaking service cannot starve the host
+
+services:
+  postgres:
+    ports: !override []
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in production}
+
+  redis:
+    ports: !override []
+
+  kafka:
+    ports: !override []
+
+  elasticsearch:
+    ports: !override []
+    environment:
+      xpack.security.enabled: "true"
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:?ELASTIC_PASSWORD must be set in production}
+
+  minio:
+    ports: !override []
+    environment:
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set in production}
+
+  discovery-service:
+    ports: !override []
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  auth-service:
+    ports: !override []
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+      AURA_AUTH_TOKEN_RSA_PRIVATE_KEY_PEM: ${AURA_AUTH_TOKEN_RSA_PRIVATE_KEY_PEM:?signing key required}
+      AURA_AUTH_TOKEN_RSA_PUBLIC_KEY_PEM: ${AURA_AUTH_TOKEN_RSA_PUBLIC_KEY_PEM:?signing key required}
+      AURA_SUPERADMIN_PHONE: ${AURA_SUPERADMIN_PHONE:?bootstrap super admin phone required}
+      AURA_SUPERADMIN_PASSWORD: ${AURA_SUPERADMIN_PASSWORD:?bootstrap super admin password required}
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  catalog-service:
+    ports: !override []
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  notification-service:
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+      SMS_IR_API_KEY: ${SMS_IR_API_KEY:?SMS provider key required}
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  gateway-service:
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+    # Bound to loopback: Nginx terminates TLS on the host and proxies to it. Publishing 0.0.0.0
+    # here would expose the gateway directly, bypassing TLS and the X-Forwarded-For rewrite that
+    # the rate limiter depends on.
+    ports: !override
+      - "127.0.0.1:8080:8080"
+    deploy:
+      resources:
+        limits:
+          memory: 768M

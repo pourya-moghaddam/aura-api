@@ -1,21 +1,10 @@
 server:
   port: 8082
 
-aura:
-  notification:
-    sms:
-      sms-ir:
-        api-key: "KqPGIqGFg2b23FXXDnzmXyPq0Ta4VYyrQL0XhrxQu1lfO0Rc"
-        otp-template-id: 823095
-        base-url: "https://api.sms.ir/v1"
-        verify-path: "/send/verify"
-        otp-parameter-name: "OTP"
-  kafka:
-    topics:
-      otp-requested: ${KAFKA_TOPIC_OTP_REQUESTED:otp-requested-topic}
 spring:
   application:
     name: notification-service
+
   cloud:
     function:
       definition: otpRequestedIn
@@ -24,6 +13,54 @@ spring:
         otpRequestedIn-in-0:
           destination: ${aura.kafka.topics.otp-requested}
           group: notification-group
+          consumer:
+            max-attempts: 3
+            back-off-initial-interval: 1000
       kafka:
         binder:
-          brokers: localhost:9092
+          brokers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+        bindings:
+          otpRequestedIn-in-0:
+            consumer:
+              # Messages that fail every retry go to <topic>.DLT rather than blocking the
+              # partition. Nothing else can make progress behind a poison message otherwise.
+              enable-dlq: true
+              dlq-name: aura.auth.otp-requested.v1.DLT
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+aura:
+  notification:
+    sms:
+      sms-ir:
+        # Supplied via SMS_IR_API_KEY. Never commit a live key - the previous value in this file
+        # was a working credential and should be rotated at the provider.
+        api-key: ${SMS_IR_API_KEY:}
+        otp-template-id: ${SMS_IR_OTP_TEMPLATE_ID:823095}
+        base-url: ${SMS_IR_BASE_URL:https://api.sms.ir/v1}
+        verify-path: "/send/verify"
+        otp-parameter-name: "OTP"
+  kafka:
+    topics:
+      # Must match auth-service's producer binding; see com.aura.common.events.Topics.
+      otp-requested: ${KAFKA_TOPIC_OTP_REQUESTED:aura.auth.otp-requested.v1}
+
+logging:
+  level:
+    root: INFO
+    com.aura: DEBUG

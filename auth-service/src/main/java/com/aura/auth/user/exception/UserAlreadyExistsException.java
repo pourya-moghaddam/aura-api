@@ -1,7 +1,10 @@
 package com.aura.auth.user.exception;
 
-public class UserAlreadyExistsException extends RuntimeException {
+import com.aura.common.web.error.ConflictException;
+
+public class UserAlreadyExistsException extends ConflictException {
+
     public UserAlreadyExistsException(String message) {
-        super(message);
+        super("user-already-exists", message);
     }
 }

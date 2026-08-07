@@ -8,7 +8,6 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.type.SqlTypes;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Map;
 
@@ -38,8 +37,10 @@ public class Product {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    @Column(nullable = false, precision = 12, scale = 2)
-    private BigDecimal price;
+    // No price here on purpose: price is per-variant, because the same product sells at different
+    // prices per size/colour. The V1 migration already models it that way on product_variants;
+    // this entity used to declare a `price` column that the schema never had, which meant
+    // ddl-auto=validate refused to start the service.
 
     @Column(name = "is_active", nullable = false)
     private boolean isActive;
