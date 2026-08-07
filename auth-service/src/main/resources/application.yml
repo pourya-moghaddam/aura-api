@@ -59,7 +59,18 @@ management:
 aura:
   auth:
     otp:
-      ttl-minutes: 3
+      ttl: 3m
+      length: 6
+      # Wrong guesses before the code is burned.
+      max-attempts: 5
+      resend-cooldown: 60s
+      max-per-phone-per-hour: 5
+      max-per-ip-per-hour: 20
+      # Daily circuit breaker on total sends - the cap on how large the SMS bill can get if every
+      # other limit is evaded by a distributed source.
+      max-per-day-global: 2000
+      # HMAC key for hashing codes at rest. Startup fails under the prod profile if unset.
+      pepper: ${AURA_AUTH_OTP_PEPPER:}
       otp-binding-name: "otpRequestedOut-out-0"
     token:
       issuer: ${AURA_TOKEN_ISSUER:http://localhost:8081}

@@ -45,10 +45,16 @@ public class SecurityConfig {
             .cors(AbstractHttpConfigurer::disable)
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
+                // Pre-authentication endpoints. Each is rate limited in OtpRateLimiter rather
+                // than here, because the limits are per phone and per IP, not per route.
                 .requestMatchers(
-                    "/api/auth/users/request-otp",
-                    "/api/auth/users/verify-otp",
-                    "/api/auth/users/login/password"
+                    "/api/auth/storefront/otp/request",
+                    "/api/auth/storefront/otp/verify",
+                    "/api/auth/storefront/login",
+                    "/api/auth/control/otp/request",
+                    "/api/auth/control/otp/verify",
+                    "/api/auth/control/login",
+                    "/api/auth/login-methods"
                 ).permitAll()
                 .requestMatchers("/api/auth/.well-known/**").permitAll()
                 .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
