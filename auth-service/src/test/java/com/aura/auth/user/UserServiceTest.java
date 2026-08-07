@@ -5,6 +5,8 @@ import com.aura.auth.otp.OtpService;
 import com.aura.auth.role.Role;
 import com.aura.auth.role.RoleRepository;
 import com.aura.auth.security.TokenIssuer;
+import com.aura.auth.token.AuthSession;
+import com.aura.auth.token.RefreshTokenService;
 import com.aura.auth.user.dto.*;
 import com.aura.auth.user.exception.InvalidCredentialsException;
 import com.aura.common.events.OtpRequestedEvent;
@@ -16,7 +18,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.cloud.stream.function.StreamBridge;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -26,6 +30,7 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -38,6 +43,7 @@ class UserServiceTest {
     private static final String CANONICAL_PHONE = "+989121234567";
     private static final String BINDING = "otpRequestedOut-out-0";
     private static final String CLIENT_IP = "203.0.113.7";
+    private static final String RAW_REFRESH_TOKEN = "raw-refresh-token";
 
     @Mock
     private UserRepository userRepository;
@@ -50,7 +56,11 @@ class UserServiceTest {
     @Mock
     private StringRedisTemplate redisTemplate;
     @Mock
+    private ValueOperations<String, String> valueOperations;
+    @Mock
     private TokenIssuer tokenIssuer;
+    @Mock
+    private RefreshTokenService refreshTokenService;
     @Mock
     private PasswordEncoder passwordEncoder;
 
@@ -65,7 +75,7 @@ class UserServiceTest {
 
         userService = new UserService(
             userRepository, roleRepository, streamBridge, otpProperties,
-            otpService, redisTemplate, tokenIssuer, passwordEncoder);
+            otpService, redisTemplate, tokenIssuer, refreshTokenService, passwordEncoder);
 
         userRole = new Role(1L, "USER", "Storefront customer");
         adminRole = new Role(2L, "ADMIN", "Catalog administrator");
@@ -78,6 +88,12 @@ class UserServiceTest {
     private void stubToken(TokenAudience audience) {
         when(tokenIssuer.issue(any(User.class), eq(audience)))
             .thenReturn(new TokenIssuer.IssuedAccessToken("jwt", "jti", Instant.now().plusSeconds(900)));
+    }
+
+    private void stubRefreshToken(TokenAudience audience) {
+        when(refreshTokenService.issueNew(anyLong(), eq(audience)))
+            .thenReturn(new RefreshTokenService.IssuedRefreshToken(
+                RAW_REFRESH_TOKEN, Instant.now().plusSeconds(2_592_000), 1L, audience));
     }
 
     // --- Storefront -------------------------------------------------------------------------
@@ -112,19 +128,22 @@ class UserServiceTest {
         when(roleRepository.findByName("USER")).thenReturn(Optional.of(userRole));
         when(userRepository.save(any(User.class))).thenReturn(user(Set.of(userRole)));
         stubToken(TokenAudience.STOREFRONT);
+        stubRefreshToken(TokenAudience.STOREFRONT);
 
-        AuthResponse response = userService.verifyStorefrontOtp(
+        AuthSession session = userService.verifyStorefrontOtp(
             new UserVerificationRequest(TYPED_PHONE, "123456"));
 
         verify(otpService).verify(CANONICAL_PHONE, "123456");
         verify(userRepository).save(any(User.class));
-        assertThat(response.accessToken()).isEqualTo("jwt");
+        assertThat(session.accessToken().accessToken()).isEqualTo("jwt");
+        assertThat(session.refreshToken().rawToken()).isEqualTo(RAW_REFRESH_TOKEN);
     }
 
     @Test
     void verifyingAStorefrontCodeReusesAnExistingUser() {
         when(userRepository.findByPhone(CANONICAL_PHONE)).thenReturn(Optional.of(user(Set.of(userRole))));
         stubToken(TokenAudience.STOREFRONT);
+        stubRefreshToken(TokenAudience.STOREFRONT);
 
         userService.verifyStorefrontOtp(new UserVerificationRequest(TYPED_PHONE, "123456"));
 
@@ -139,6 +158,8 @@ class UserServiceTest {
         assertThatThrownBy(() -> userService.verifyStorefrontOtp(
             new UserVerificationRequest(TYPED_PHONE, "123456")))
             .isInstanceOf(InvalidCredentialsException.class);
+
+        verify(refreshTokenService, never()).issueNew(anyLong(), any());
     }
 
     // --- Control panel ----------------------------------------------------------------------
@@ -182,12 +203,14 @@ class UserServiceTest {
     void verifyingAControlCodeIssuesAControlAudienceToken() {
         when(userRepository.findByPhone(CANONICAL_PHONE)).thenReturn(Optional.of(user(Set.of(adminRole))));
         stubToken(TokenAudience.CONTROL);
+        stubRefreshToken(TokenAudience.CONTROL);
 
-        AuthResponse response = userService.verifyControlOtp(
+        AuthSession session = userService.verifyControlOtp(
             new UserVerificationRequest(TYPED_PHONE, "123456"));
 
-        assertThat(response.accessToken()).isEqualTo("jwt");
+        assertThat(session.accessToken().accessToken()).isEqualTo("jwt");
         verify(tokenIssuer).issue(any(User.class), eq(TokenAudience.CONTROL));
+        verify(refreshTokenService).issueNew(1L, TokenAudience.CONTROL);
     }
 
     @Test
@@ -217,11 +240,12 @@ class UserServiceTest {
         when(userRepository.findByPhone(CANONICAL_PHONE)).thenReturn(Optional.of(withPassword));
         when(passwordEncoder.matches("secret", "hash")).thenReturn(true);
         stubToken(TokenAudience.STOREFRONT);
+        stubRefreshToken(TokenAudience.STOREFRONT);
 
-        AuthResponse response = userService.loginWithPassword(
+        AuthSession session = userService.loginWithPassword(
             new PasswordLoginRequest(TYPED_PHONE, "secret"), TokenAudience.STOREFRONT);
 
-        assertThat(response.accessToken()).isEqualTo("jwt");
+        assertThat(session.accessToken().accessToken()).isEqualTo("jwt");
     }
 
     /** No password set must be indistinguishable from a wrong password. */
@@ -267,5 +291,81 @@ class UserServiceTest {
 
         assertThat(response.password()).isFalse();
         assertThat(response.otp()).isTrue();
+    }
+
+    // --- Session refresh ---------------------------------------------------------------------
+
+    @Test
+    void refreshingASessionMintsAMatchingAccessToken() {
+        User activeUser = user(Set.of(userRole));
+        when(refreshTokenService.rotate(RAW_REFRESH_TOKEN)).thenReturn(
+            new RefreshTokenService.IssuedRefreshToken(
+                "new-raw-token", Instant.now().plusSeconds(2_592_000), 1L, TokenAudience.STOREFRONT));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(activeUser));
+        stubToken(TokenAudience.STOREFRONT);
+
+        AuthSession session = userService.refreshSession(RAW_REFRESH_TOKEN);
+
+        assertThat(session.accessToken().accessToken()).isEqualTo("jwt");
+        assertThat(session.refreshToken().rawToken()).isEqualTo("new-raw-token");
+        verify(tokenIssuer).issue(activeUser, TokenAudience.STOREFRONT);
+    }
+
+    @Test
+    void refreshingWithADeactivatedUserFails() {
+        User deactivated = new User(1L, null, CANONICAL_PHONE, null, false, null, null, Set.of(userRole));
+        when(refreshTokenService.rotate(RAW_REFRESH_TOKEN)).thenReturn(
+            new RefreshTokenService.IssuedRefreshToken(
+                "new-raw-token", Instant.now().plusSeconds(2_592_000), 1L, TokenAudience.STOREFRONT));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(deactivated));
+
+        assertThatThrownBy(() -> userService.refreshSession(RAW_REFRESH_TOKEN))
+            .isInstanceOf(InvalidCredentialsException.class);
+    }
+
+    // --- Logout / password change -------------------------------------------------------------
+
+    @Test
+    void loggingOutRevokesTheRefreshFamilyAndBlacklistsTheAccessToken() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        Instant now = Instant.now();
+        Jwt jwt = Jwt.withTokenValue("token")
+            .header("alg", "RS256")
+            .jti("the-token-id")
+            .issuedAt(now)
+            .expiresAt(now.plusSeconds(600))
+            .build();
+
+        userService.logout(jwt, RAW_REFRESH_TOKEN);
+
+        verify(valueOperations).set(eq("jwt:blacklist:jti:the-token-id"), eq("1"), any(Duration.class));
+        verify(refreshTokenService).revokeFamilyContaining(RAW_REFRESH_TOKEN);
+    }
+
+    @Test
+    void loggingOutWithNoRefreshCookiePresentStillBlacklistsTheAccessToken() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        Instant now = Instant.now();
+        Jwt jwt = Jwt.withTokenValue("token")
+            .header("alg", "RS256")
+            .jti("the-token-id")
+            .issuedAt(now)
+            .expiresAt(now.plusSeconds(600))
+            .build();
+
+        userService.logout(jwt, null);
+
+        verify(valueOperations).set(anyString(), anyString(), any(Duration.class));
+        verify(refreshTokenService, never()).revokeFamilyContaining(any());
+    }
+
+    @Test
+    void settingAPasswordRevokesEveryExistingSession() {
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user(Set.of(userRole))));
+        when(passwordEncoder.encode("newPassword123")).thenReturn("encoded");
+
+        userService.setPassword(1L, new SetPasswordRequest("newPassword123"));
+
+        verify(refreshTokenService).revokeAllForUser(1L);
     }
 }

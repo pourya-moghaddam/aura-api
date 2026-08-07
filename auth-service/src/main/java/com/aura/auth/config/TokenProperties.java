@@ -12,6 +12,10 @@ import java.time.Duration;
  * @param accessTokenTtl deliberately short. The access token cannot be revoked directly, so its
  *                       lifetime is the window in which a stolen one stays useful. Revocation is
  *                       done by killing the refresh token instead.
+ * @param cookieSecure   whether the refresh-token cookie carries the {@code Secure} attribute.
+ *                       Must be true in production; defaults to false so local development over
+ *                       plain HTTP does not silently fail refresh with no indication why browsers
+ *                       are dropping the cookie.
  * @param rsa            signing keypair; see {@link RsaKeyProperties}
  */
 @ConfigurationProperties("aura.auth.token")
@@ -19,6 +23,7 @@ public record TokenProperties(
     String issuer,
     Duration accessTokenTtl,
     Duration refreshTokenTtl,
+    boolean cookieSecure,
     RsaKeyProperties rsa
 ) {
 

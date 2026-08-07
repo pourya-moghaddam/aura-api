@@ -5,6 +5,8 @@ import com.aura.auth.otp.OtpService;
 import com.aura.auth.role.Role;
 import com.aura.auth.role.RoleRepository;
 import com.aura.auth.security.TokenIssuer;
+import com.aura.auth.token.AuthSession;
+import com.aura.auth.token.RefreshTokenService;
 import com.aura.auth.user.dto.*;
 import com.aura.auth.user.exception.InvalidCredentialsException;
 import com.aura.common.events.OtpPurpose;
@@ -39,6 +41,7 @@ public class UserService {
     private final OtpService otpService;
     private final StringRedisTemplate redisTemplate;
     private final TokenIssuer tokenIssuer;
+    private final RefreshTokenService refreshTokenService;
     private final PasswordEncoder passwordEncoder;
 
     // ---------------------------------------------------------------------------------------
@@ -60,14 +63,14 @@ public class UserService {
     }
 
     @Transactional
-    public AuthResponse verifyStorefrontOtp(UserVerificationRequest request) {
+    public AuthSession verifyStorefrontOtp(UserVerificationRequest request) {
         String phone = IranianPhoneNumber.normalize(request.phone());
         otpService.verify(phone, request.otpCode());
 
         User user = userRepository.findByPhone(phone)
             .orElseGet(() -> createUser(phone));
 
-        return issueFor(user, TokenAudience.STOREFRONT);
+        return issueSession(user, TokenAudience.STOREFRONT);
     }
 
     // ---------------------------------------------------------------------------------------
@@ -96,8 +99,8 @@ public class UserService {
                 () -> log.info("Control OTP requested for a phone with no control access; no SMS sent"));
     }
 
-    @Transactional(readOnly = true)
-    public AuthResponse verifyControlOtp(UserVerificationRequest request) {
+    @Transactional
+    public AuthSession verifyControlOtp(UserVerificationRequest request) {
         String phone = IranianPhoneNumber.normalize(request.phone());
         otpService.verify(phone, request.otpCode());
 
@@ -106,11 +109,11 @@ public class UserService {
             .filter(this::hasControlRole)
             .orElseThrow(() -> new InvalidCredentialsException("Invalid credentials"));
 
-        return issueFor(user, TokenAudience.CONTROL);
+        return issueSession(user, TokenAudience.CONTROL);
     }
 
-    @Transactional(readOnly = true)
-    public AuthResponse loginWithPassword(PasswordLoginRequest request, TokenAudience audience) {
+    @Transactional
+    public AuthSession loginWithPassword(PasswordLoginRequest request, TokenAudience audience) {
         User user = findByIdentifier(request.identifier())
             .orElseThrow(() -> new InvalidCredentialsException("Invalid credentials"));
 
@@ -124,7 +127,24 @@ public class UserService {
             throw new InvalidCredentialsException("Invalid credentials");
         }
 
-        return issueFor(user, audience);
+        return issueSession(user, audience);
+    }
+
+    /**
+     * Exchanges a refresh token for a new session. The presented token is consumed as a side
+     * effect of {@link RefreshTokenService#rotate}, so a second presentation of the same raw value
+     * is reuse, not a retry — see that class for what happens then.
+     */
+    @Transactional
+    public AuthSession refreshSession(String presentedRefreshToken) {
+        RefreshTokenService.IssuedRefreshToken rotated = refreshTokenService.rotate(presentedRefreshToken);
+
+        User user = userRepository.findById(rotated.userId())
+            .filter(u -> Boolean.TRUE.equals(u.getIsActive()))
+            .orElseThrow(() -> new InvalidCredentialsException("Invalid credentials"));
+
+        TokenIssuer.IssuedAccessToken accessToken = tokenIssuer.issue(user, rotated.audience());
+        return new AuthSession(AuthResponse.bearer(accessToken.value(), accessToken.expiresAt()), rotated);
     }
 
     /**
@@ -165,14 +185,35 @@ public class UserService {
         );
     }
 
+    /**
+     * Changing a password revokes every existing session. Otherwise a stolen refresh token
+     * outlives the exact security event meant to invalidate it — the whole point of letting the
+     * user set a password is so they can lock out anyone who compromised the OTP channel.
+     */
     @Transactional
     public void setPassword(long userId, SetPasswordRequest request) {
         User user = requireUser(userId);
         user.setPassword(passwordEncoder.encode(request.newPassword()));
         userRepository.save(user);
+        refreshTokenService.revokeAllForUser(userId);
     }
 
-    public void logout(Jwt token) {
+    /**
+     * Logout kills the whole refresh family, not just the presented access token. Blacklisting
+     * only the access token would leave the refresh token valid, so the session would silently
+     * come back to life the next time the client refreshed.
+     */
+    @Transactional
+    public void logout(Jwt accessToken, String presentedRefreshToken) {
+        blacklistAccessToken(accessToken);
+        if (presentedRefreshToken != null) {
+            refreshTokenService.revokeFamilyContaining(presentedRefreshToken);
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------
+
+    private void blacklistAccessToken(Jwt token) {
         Instant expiresAt = token.getExpiresAt();
         if (expiresAt == null) {
             return;
@@ -184,8 +225,6 @@ public class UserService {
                 TokenBlacklistKeys.forTokenId(token.getId()), "1", remaining);
         }
     }
-
-    // ---------------------------------------------------------------------------------------
 
     private void publishOtp(String phone, String code, OtpPurpose purpose) {
         streamBridge.send(
@@ -199,12 +238,18 @@ public class UserService {
             .anyMatch(Roles::isControlRole);
     }
 
-    private AuthResponse issueFor(User user, TokenAudience audience) {
+    private AuthSession issueSession(User user, TokenAudience audience) {
         if (!Boolean.TRUE.equals(user.getIsActive())) {
             throw new InvalidCredentialsException("Invalid credentials");
         }
-        TokenIssuer.IssuedAccessToken token = tokenIssuer.issue(user, audience);
-        return AuthResponse.bearer(token.value(), token.expiresAt());
+        TokenIssuer.IssuedAccessToken accessToken = tokenIssuer.issue(user, audience);
+        RefreshTokenService.IssuedRefreshToken refreshToken =
+            refreshTokenService.issueNew(user.getId(), audience);
+
+        return new AuthSession(
+            AuthResponse.bearer(accessToken.value(), accessToken.expiresAt()),
+            refreshToken
+        );
     }
 
     private java.util.Optional<User> findByIdentifier(String identifier) {

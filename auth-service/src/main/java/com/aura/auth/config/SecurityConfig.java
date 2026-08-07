@@ -54,7 +54,11 @@ public class SecurityConfig {
                     "/api/auth/control/otp/request",
                     "/api/auth/control/otp/verify",
                     "/api/auth/control/login",
-                    "/api/auth/login-methods"
+                    "/api/auth/login-methods",
+                    // The access token has necessarily expired by the time a client needs this -
+                    // the refresh cookie is the only credential available, and it is validated
+                    // inside the handler, not by this filter chain.
+                    "/api/auth/token/refresh"
                 ).permitAll()
                 .requestMatchers("/api/auth/.well-known/**").permitAll()
                 .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()

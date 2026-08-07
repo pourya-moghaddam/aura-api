@@ -76,6 +76,9 @@ aura:
       issuer: ${AURA_TOKEN_ISSUER:http://localhost:8081}
       access-token-ttl: 15m
       refresh-token-ttl: 30d
+      # False by default so local HTTP does not silently drop the cookie. Must be true in prod -
+      # set AURA_TOKEN_COOKIE_SECURE=true there.
+      cookie-secure: ${AURA_TOKEN_COOKIE_SECURE:false}
       rsa:
         # Supplied via AURA_AUTH_TOKEN_RSA_PRIVATE_KEY_PEM / _PUBLIC_KEY_PEM.
         # Left empty for local development, where an ephemeral keypair is generated at startup.

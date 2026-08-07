@@ -1,8 +1,12 @@
 package com.aura.auth.user;
 
+import com.aura.auth.config.TokenProperties;
+import com.aura.auth.token.AuthSession;
+import com.aura.auth.token.RefreshTokenCookie;
 import com.aura.auth.user.dto.*;
 import com.aura.common.security.TokenAudience;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +26,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final UserService userService;
+    private final TokenProperties tokenProperties;
 
     // --- Storefront -------------------------------------------------------------------------
 
@@ -37,16 +42,18 @@ public class AuthController {
 
     @PostMapping("/storefront/otp/verify")
     public ResponseEntity<AuthResponse> verifyStorefrontOtp(
-        @Valid @RequestBody UserVerificationRequest request
+        @Valid @RequestBody UserVerificationRequest request,
+        HttpServletResponse httpResponse
     ) {
-        return ResponseEntity.ok(userService.verifyStorefrontOtp(request));
+        return respond(userService.verifyStorefrontOtp(request), httpResponse);
     }
 
     @PostMapping("/storefront/login")
     public ResponseEntity<AuthResponse> storefrontPasswordLogin(
-        @Valid @RequestBody PasswordLoginRequest request
+        @Valid @RequestBody PasswordLoginRequest request,
+        HttpServletResponse httpResponse
     ) {
-        return ResponseEntity.ok(userService.loginWithPassword(request, TokenAudience.STOREFRONT));
+        return respond(userService.loginWithPassword(request, TokenAudience.STOREFRONT), httpResponse);
     }
 
     // --- Control panel ----------------------------------------------------------------------
@@ -63,16 +70,18 @@ public class AuthController {
 
     @PostMapping("/control/otp/verify")
     public ResponseEntity<AuthResponse> verifyControlOtp(
-        @Valid @RequestBody UserVerificationRequest request
+        @Valid @RequestBody UserVerificationRequest request,
+        HttpServletResponse httpResponse
     ) {
-        return ResponseEntity.ok(userService.verifyControlOtp(request));
+        return respond(userService.verifyControlOtp(request), httpResponse);
     }
 
     @PostMapping("/control/login")
     public ResponseEntity<AuthResponse> controlPasswordLogin(
-        @Valid @RequestBody PasswordLoginRequest request
+        @Valid @RequestBody PasswordLoginRequest request,
+        HttpServletResponse httpResponse
     ) {
-        return ResponseEntity.ok(userService.loginWithPassword(request, TokenAudience.CONTROL));
+        return respond(userService.loginWithPassword(request, TokenAudience.CONTROL), httpResponse);
     }
 
     // --- Shared -----------------------------------------------------------------------------
@@ -87,5 +96,30 @@ public class AuthController {
         @Valid @RequestBody UserRegistrationRequest request
     ) {
         return ResponseEntity.ok(userService.availableLoginMethods(request.phone()));
+    }
+
+    /**
+     * Exchanges the refresh cookie for a new access token, rotating the refresh token in the same
+     * call. Deliberately not under {@code /storefront} or {@code /control}: the cookie already
+     * carries the audience the original login established, so there is nothing for the caller to
+     * declare here — declaring one anyway would just be a second, forgeable source of truth.
+     */
+    @PostMapping("/token/refresh")
+    public ResponseEntity<AuthResponse> refresh(
+        HttpServletRequest httpRequest,
+        HttpServletResponse httpResponse
+    ) {
+        String presented = RefreshTokenCookie.readOrThrow(httpRequest);
+        return respond(userService.refreshSession(presented), httpResponse);
+    }
+
+    private ResponseEntity<AuthResponse> respond(AuthSession session, HttpServletResponse httpResponse) {
+        RefreshTokenCookie.set(
+            httpResponse,
+            session.refreshToken().rawToken(),
+            session.refreshToken().expiresAt(),
+            tokenProperties.cookieSecure()
+        );
+        return ResponseEntity.ok(session.accessToken());
     }
 }
