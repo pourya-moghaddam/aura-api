@@ -86,6 +86,13 @@ aura:
         private-key-pem: ${AURA_AUTH_TOKEN_RSA_PRIVATE_KEY_PEM:}
         public-key-pem: ${AURA_AUTH_TOKEN_RSA_PUBLIC_KEY_PEM:}
         key-id: ${AURA_AUTH_TOKEN_RSA_KEY_ID:aura-signing-key}
+    super-admin:
+      # Created once on first startup if no SUPER_ADMIN exists yet. Left empty in dev - the
+      # bootstrap runner just warns and skips rather than creating an account with a known
+      # password. Startup fails under the prod profile if these are unset - see
+      # SuperAdminBootstrapRunner.
+      phone: ${AURA_SUPERADMIN_PHONE:}
+      password: ${AURA_SUPERADMIN_PASSWORD:}
   kafka:
     topics:
       otp-requested: ${KAFKA_TOPIC_OTP_REQUESTED:aura.auth.otp-requested.v1}

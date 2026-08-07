@@ -13,4 +13,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByPhone(String phone);
 
     Optional<User> findByEmail(String phone);
+
+    /** Whether any user holds the given role — used to check if the super-admin bootstrap has already run. */
+    boolean existsByRoles_Name(String roleName);
 }
