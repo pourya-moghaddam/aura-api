@@ -1,6 +1,6 @@
 package com.aura.notification.sms.smsir;
 
-import com.aura.common.event.OtpRequestedEvent;
+import com.aura.common.events.OtpRequestedEvent;
 import com.aura.notification.config.SmsProperties;
 import com.aura.notification.sms.SmsNotificationService;
 import com.aura.notification.sms.smsir.dto.SmsIrVerifyParameter;
@@ -23,13 +23,13 @@ public class SmsIrNotificationService implements SmsNotificationService {
     private final SmsProperties smsProperties;
 
     @Override
-    public void sendSms(OtpRequestedEvent event) {
-        log.info("Sending Verify SMS via sms.ir to mobile: {}", event.phone());
+    public void sendOtp(OtpRequestedEvent event) {
+        log.info("Sending OTP via sms.ir for purpose {} [event {}]", event.purpose(), event.eventId());
 
         SmsIrVerifyRequest requestBody = new SmsIrVerifyRequest(
             event.phone(),
             smsProperties.smsIr().otpTemplateId(),
-            List.of(new SmsIrVerifyParameter(smsProperties.smsIr().otpParameterName(), event.otpCode()))
+            List.of(new SmsIrVerifyParameter(smsProperties.smsIr().otpParameterName(), event.code()))
         );
 
         try {

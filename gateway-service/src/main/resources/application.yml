@@ -5,32 +5,82 @@ spring:
   application:
     name: gateway-service
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
   cloud:
     gateway:
-      routes:
-        - id: auth-service
-          uri: lb://AUTH-SERVICE
-          predicates:
-            - Path=/api/auth/**
+      # NOTE: the `server.webflux` segment is required as of Spring Cloud Gateway 5.x.
+      # The older `spring.cloud.gateway.routes` path is not an error - it is silently ignored,
+      # which presents as "the gateway 404s everything" with nothing in the logs.
+      server:
+        webflux:
+          routes:
+            - id: auth-service
+              uri: lb://AUTH-SERVICE
+              predicates:
+                - Path=/api/auth/**
+              filters:
+                # Tightest bucket in the system: these endpoints send SMS, and each one costs
+                # money. Unmetered, a loop here drains the SMS balance.
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@ipKeyResolver}"
+                    redis-rate-limiter.replenishRate: 3
+                    redis-rate-limiter.burstCapacity: 6
+                    redis-rate-limiter.requestedTokens: 1
 
-        - id: notification-service
-          uri: lb://NOTIFICATION-SERVICE
-          predicates:
-            - Path=/api/notifications/**
+            - id: catalog-service
+              uri: lb://CATALOG-SERVICE
+              predicates:
+                - Path=/api/catalog/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@userKeyResolver}"
+                    redis-rate-limiter.replenishRate: 30
+                    redis-rate-limiter.burstCapacity: 60
 
-        - id: catalog-service
-          uri: lb://CATALOG-SERVICE
-          predicates:
-            - Path=/api/catalog/**
+            - id: catalog-service-control
+              uri: lb://CATALOG-SERVICE
+              predicates:
+                - Path=/api/control/catalog/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@userKeyResolver}"
+                    redis-rate-limiter.replenishRate: 20
+                    redis-rate-limiter.burstCapacity: 40
+
+          # No route to notification-service on purpose: it is event-driven and has no public API.
+          # Adding a route would expose an SMS-sending service to the internet.
 
 eureka:
   client:
     service-url:
-      defaultZone: http://localhost:8761/eureka/
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
   instance:
     prefer-ip-address: true
+
+aura:
+  security:
+    jwt:
+      jwk-set-uri: ${AURA_JWKS_URI:http://localhost:8081/api/auth/.well-known/jwks.json}
+      issuer: ${AURA_TOKEN_ISSUER:http://localhost:8081}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
 
 logging:
   level:
     root: INFO
-    org.springframework.cloud.gateway: DEBUG
+    com.aura: DEBUG

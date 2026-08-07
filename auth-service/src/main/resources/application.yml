@@ -6,26 +6,24 @@ spring:
     name: auth-service
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/auth
-    username: aura
-    password: aura
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:auth}
+    username: ${DB_USERNAME:aura}
+    password: ${DB_PASSWORD:aura}
     driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
       ddl-auto: none
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false
+
   flyway:
     enabled: true
-    baseline-on-migrate: true
     locations: classpath:db/migration
 
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
   cloud:
     stream:
@@ -34,12 +32,12 @@ spring:
           destination: ${aura.kafka.topics.otp-requested}
 
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 
 eureka:
   client:
     service-url:
-      defaultZone: http://localhost:8761/eureka/
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
   instance:
     prefer-ip-address: true
 
@@ -52,17 +50,28 @@ management:
   endpoints:
     web:
       exposure:
-        include: health, info
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
 
 aura:
   auth:
     otp:
-      message-template: "کد ورود شما: %s"
       ttl-minutes: 3
       otp-binding-name: "otpRequestedOut-out-0"
-    jwt:
-      secret: "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970"
-      expiration-ms: 86400000
+    token:
+      issuer: ${AURA_TOKEN_ISSUER:http://localhost:8081}
+      access-token-ttl: 15m
+      refresh-token-ttl: 30d
+      rsa:
+        # Supplied via AURA_AUTH_TOKEN_RSA_PRIVATE_KEY_PEM / _PUBLIC_KEY_PEM.
+        # Left empty for local development, where an ephemeral keypair is generated at startup.
+        # Startup fails under the prod profile if these are unset - see JwkConfig.
+        private-key-pem: ${AURA_AUTH_TOKEN_RSA_PRIVATE_KEY_PEM:}
+        public-key-pem: ${AURA_AUTH_TOKEN_RSA_PUBLIC_KEY_PEM:}
+        key-id: ${AURA_AUTH_TOKEN_RSA_KEY_ID:aura-signing-key}
   kafka:
     topics:
-      otp-requested: ${KAFKA_TOPIC_OTP_REQUESTED:otp-requested-topic}
+      otp-requested: ${KAFKA_TOPIC_OTP_REQUESTED:aura.auth.otp-requested.v1}

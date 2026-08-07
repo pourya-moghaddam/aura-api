@@ -1,7 +1,11 @@
 package com.aura.auth.user.exception;
 
-public class InvalidOtpException extends RuntimeException {
+import com.aura.common.web.error.ApplicationException;
+import org.springframework.http.HttpStatus;
+
+public class InvalidOtpException extends ApplicationException {
+
     public InvalidOtpException(String message) {
-        super(message);
+        super(HttpStatus.UNAUTHORIZED, "invalid-otp", message);
     }
 }

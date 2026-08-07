@@ -40,7 +40,11 @@ public class User {
     @Column(nullable = false, unique = true, length = 20)
     private String phone;
 
-    @Column(name = "password", nullable = false)
+    /**
+     * Null until the user sets one. Sign-up is OTP-only, so a null password is the normal state,
+     * not an anomaly — and it is what the UI reads to decide whether to offer password login.
+     */
+    @Column(name = "password")
     private String password;
 
     @Column(name = "is_active")

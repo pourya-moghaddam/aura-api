@@ -1,6 +1,7 @@
 package com.aura.notification.sms.smsir;
 
-import com.aura.common.event.OtpRequestedEvent;
+import com.aura.common.events.OtpPurpose;
+import com.aura.common.events.OtpRequestedEvent;
 import com.aura.notification.config.RestClientConfig;
 import com.aura.notification.config.SmsProperties;
 import org.junit.jupiter.api.Test;
@@ -20,7 +21,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 @Import(RestClientConfig.class)
 @EnableConfigurationProperties(SmsProperties.class)
 @TestPropertySource(properties = {
-    "aura.notification.sms.sms-ir.api-key=KqPGIqGFg2b23FXXDnzmXyPq0Ta4VYyrQL0XhrxQu1lfO0Rc",
+    "aura.notification.sms.sms-ir.api-key=test-api-key",
     "aura.notification.sms.sms-ir.otp-template-id=823095",
     "aura.notification.sms.sms-ir.base-url=https://api.sms.ir/v1",
     "aura.notification.sms.sms-ir.verify-path=/send/verify",
@@ -35,7 +36,7 @@ class SmsIrNotificationServiceTest {
     private SmsIrNotificationService service;
 
     @Test
-    void sendSms_Success() {
+    void sendsOtpUsingTheProviderTemplate() {
         String expectedResponseBody = """
             {
                 "status": 1,
@@ -49,7 +50,7 @@ class SmsIrNotificationServiceTest {
 
         server.expect(requestTo("https://api.sms.ir/v1/send/verify"))
             .andExpect(method(HttpMethod.POST))
-            .andExpect(header("x-api-key", "KqPGIqGFg2b23FXXDnzmXyPq0Ta4VYyrQL0XhrxQu1lfO0Rc"))
+            .andExpect(header("x-api-key", "test-api-key"))
             .andExpect(header("Content-Type", MediaType.APPLICATION_JSON_VALUE))
             .andExpect(content().json("""
                 {
@@ -65,8 +66,7 @@ class SmsIrNotificationServiceTest {
                 """))
             .andRespond(withSuccess(expectedResponseBody, MediaType.APPLICATION_JSON));
 
-        OtpRequestedEvent event = new OtpRequestedEvent("+989120000000", "123456", "Your code is 123456");
-        service.sendSms(event);
+        service.sendOtp(OtpRequestedEvent.of("+989120000000", "123456", OtpPurpose.STOREFRONT_LOGIN));
 
         server.verify();
     }
