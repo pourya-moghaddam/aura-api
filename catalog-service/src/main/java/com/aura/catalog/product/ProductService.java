@@ -4,7 +4,7 @@ import com.aura.catalog.category.Category;
 import com.aura.catalog.category.CategoryRepository;
 import com.aura.catalog.product.dto.CreateProductRequest;
 import com.aura.catalog.product.dto.ProductResponse;
-import com.aura.common.exception.ResourceNotFoundException;
+import com.aura.common.web.error.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,7 +26,6 @@ public class ProductService {
             .name(request.name())
             .slug(request.slug())
             .description(request.description())
-            .price(request.price())
             .attributes(request.attributes())
             .build();
 
@@ -49,7 +48,6 @@ public class ProductService {
             product.getName(),
             product.getSlug(),
             product.getDescription(),
-            product.getPrice(),
             product.isActive(),
             product.getAttributes()
         );

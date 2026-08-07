@@ -1,6 +1,5 @@
 package com.aura.catalog.product.dto;
 
-import java.math.BigDecimal;
 import java.util.Map;
 
 public record ProductResponse(
@@ -10,7 +9,6 @@ public record ProductResponse(
     String name,
     String slug,
     String description,
-    BigDecimal price,
     boolean isActive,
     Map<String, Object> attributes
 ) {

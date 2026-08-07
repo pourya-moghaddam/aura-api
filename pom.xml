@@ -8,19 +8,41 @@
     <artifactId>aura-api</artifactId>
     <packaging>pom</packaging>
     <version>0.0.1-SNAPSHOT</version>
+    <name>Aura API</name>
 
     <properties>
+        <!--
+          `release` is used rather than source+target: it also checks that the API you compile
+          against actually exists in the target JDK, which source/target does not.
+        -->
         <java.version>25</java.version>
-        <maven.compiler.source>25</maven.compiler.source>
-        <maven.compiler.target>25</maven.compiler.target>
+        <maven.compiler.release>${java.version}</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
         <spring.boot.version>4.1.0</spring.boot.version>
         <spring.cloud.version>2025.1.2</spring.cloud.version>
         <testcontainers.version>1.20.5</testcontainers.version>
         <lombok.version>1.18.42</lombok.version>
+
+        <maven.compiler.plugin.version>3.15.0</maven.compiler.plugin.version>
+        <maven.enforcer.plugin.version>3.5.0</maven.enforcer.plugin.version>
+        <maven.surefire.plugin.version>3.5.2</maven.surefire.plugin.version>
+        <maven.failsafe.plugin.version>3.5.2</maven.failsafe.plugin.version>
+        <jacoco.plugin.version>0.8.13</jacoco.plugin.version>
+        <archunit.version>1.4.1</archunit.version>
+
+        <!--
+          Coverage floor, enforced by jacoco:check during `verify`. Override on the command line
+          while a module is still being built out: -Djacoco.line.coverage=0.00
+        -->
+        <jacoco.line.coverage>0.80</jacoco.line.coverage>
     </properties>
 
     <modules>
-        <module>common</module>
+        <module>common-events</module>
+        <module>common-web</module>
+        <module>common-security</module>
         <module>auth-service</module>
         <module>notification-service</module>
         <module>catalog-service</module>
@@ -51,16 +73,237 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
+
+            <!-- Internal modules, so services can depend on them without repeating the version. -->
+            <dependency>
+                <groupId>com.aura</groupId>
+                <artifactId>common-events</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.aura</groupId>
+                <artifactId>common-web</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.aura</groupId>
+                <artifactId>common-security</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.tngtech.archunit</groupId>
+                <artifactId>archunit-junit5</artifactId>
+                <version>${archunit.version}</version>
+                <scope>test</scope>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
     <build>
+        <plugins>
+            <!--
+              Fails fast with a readable message when the build runs on the wrong JDK.
+              Without this you get "invalid target release: 25" from javac, which does not
+              tell you that JAVA_HOME is the problem.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>${maven.enforcer.plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>enforce-build-environment</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireJavaVersion>
+                                    <version>[${java.version},)</version>
+                                    <message>
+                                        Aura requires JDK ${java.version} or newer to build.
+                                        Point JAVA_HOME at a JDK ${java.version} install, e.g.
+                                        export JAVA_HOME=/usr/lib/jvm/java-25-openjdk
+                                    </message>
+                                </requireJavaVersion>
+                                <requireMavenVersion>
+                                    <version>[3.9.0,)</version>
+                                </requireMavenVersion>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+              Declared here (not in pluginManagement) so every module inherits the same
+              compiler settings and Lombok processor without repeating the block.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${maven.compiler.plugin.version}</version>
+                <configuration>
+                    <!--
+                      Retains method parameter names in the bytecode. Spring needs them to bind
+                      `@PathVariable Long id` without an explicit name; without the flag it throws
+                      at request time, not build time:
+
+                        Name for argument of type [java.lang.Long] not specified, and parameter
+                        name information not available via reflection.
+
+                      spring-boot-starter-parent sets this by default. This project uses its own
+                      parent and imports spring-boot-dependencies as a BOM instead, so the flag has
+                      to be set here - same class of omission as the missing `repackage` execution.
+                    -->
+                    <parameters>true</parameters>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+
+            <!--
+              Unit tests only. Integration tests are *IT and belong to Failsafe, so `mvn test`
+              stays fast and does not need Docker for Testcontainers.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${maven.surefire.plugin.version}</version>
+                <configuration>
+                    <includes>
+                        <include>**/*Test.java</include>
+                        <include>**/*Tests.java</include>
+                    </includes>
+                    <excludes>
+                        <exclude>**/*IT.java</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+
+            <!--
+              Integration tests. Bound to `verify`, which is also where a failure has to surface -
+              Failsafe deliberately does not fail the build during `integration-test`, so that
+              `post-integration-test` teardown always runs.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>${maven.failsafe.plugin.version}</version>
+                <configuration>
+                    <includes>
+                        <include>**/*IT.java</include>
+                    </includes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.plugin.version}</version>
+                <configuration>
+                    <excludes>
+                        <!--
+                          Excluded because covering them measures nothing. Configuration classes,
+                          DTO records, and JPA entities are declarations, not logic; including
+                          them inflates the number while saying nothing about whether the code
+                          works. The floor should apply to code that can actually be wrong.
+                        -->
+                        <exclude>**/config/**</exclude>
+                        <exclude>**/dto/**</exclude>
+                        <exclude>**/*Application.class</exclude>
+                        <exclude>**/*Properties.class</exclude>
+                        <exclude>**/*Configuration.class</exclude>
+                        <exclude>**/*Config.class</exclude>
+                    </excludes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>check-coverage</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${jacoco.line.coverage}</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+
         <pluginManagement>
             <plugins>
                 <plugin>
                     <groupId>org.springframework.boot</groupId>
                     <artifactId>spring-boot-maven-plugin</artifactId>
                     <version>${spring.boot.version}</version>
+                    <!--
+                      The `repackage` execution has to be declared explicitly. It is normally
+                      inherited from spring-boot-starter-parent, which this project does not use -
+                      it imports spring-boot-dependencies as a BOM instead, to keep control of the
+                      parent POM. Without this block the plugin is on the build but bound to
+                      nothing, so `package` produces a plain library jar with no Main-Class and no
+                      nested dependencies. That fails at runtime with "no main manifest attribute",
+                      and only at runtime: the build itself reports success.
+
+                      Applies to service modules only. The common-* libraries do not declare this
+                      plugin, and repackaging them would fail for lack of a main class.
+                    -->
+                    <executions>
+                        <execution>
+                            <id>repackage</id>
+                            <goals>
+                                <goal>repackage</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                    <configuration>
+                        <excludes>
+                            <exclude>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                            </exclude>
+                        </excludes>
+                    </configuration>
                 </plugin>
             </plugins>
         </pluginManagement>

@@ -1,7 +1,7 @@
 package com.aura.notification.sms;
 
-import com.aura.common.event.OtpRequestedEvent;
+import com.aura.common.events.OtpRequestedEvent;
 
 public interface SmsNotificationService {
-    void sendSms(OtpRequestedEvent event);
+    void sendOtp(OtpRequestedEvent event);
 }

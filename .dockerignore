@@ -1,0 +1,15 @@
+# Keep the build context small and, more importantly, keep host build output from leaking into
+# the image - a stale target/ directory copied in can shadow what the container build produces.
+**/target/
+**/.idea/
+**/*.iml
+.git/
+.gitignore
+**/.env
+**/.env.*
+*.md
+docker-compose*.yml
+compose*.yaml
+Dockerfile
+.dockerignore
+conv.txt

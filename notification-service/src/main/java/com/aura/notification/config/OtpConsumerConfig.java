@@ -1,6 +1,6 @@
 package com.aura.notification.config;
 
-import com.aura.common.event.OtpRequestedEvent;
+import com.aura.common.events.OtpRequestedEvent;
 import com.aura.notification.sms.SmsNotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -16,6 +16,6 @@ public class OtpConsumerConfig {
 
     @Bean
     public Consumer<OtpRequestedEvent> otpRequestedIn() {
-        return smsNotificationService::sendSms;
+        return smsNotificationService::sendOtp;
     }
 }

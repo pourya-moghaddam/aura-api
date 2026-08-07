@@ -2,7 +2,7 @@ package com.aura.catalog.category;
 
 import com.aura.catalog.category.dto.CategoryResponse;
 import com.aura.catalog.category.dto.CreateCategoryRequest;
-import com.aura.common.exception.ResourceNotFoundException;
+import com.aura.common.web.error.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
