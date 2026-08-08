@@ -70,12 +70,27 @@ aura:
         - image/png
         - image/webp
         - video/mp4
+      # Sized around what the first release deliberately does NOT have yet.
+      #
+      # Images at 2MB rather than 10MB because there is no thumbnail pipeline: a category page
+      # showing 20 products serves originals, and at 10MB each that is 200MB for one page - which
+      # on a mobile connection is a page that never finishes loading rather than a slow one.
+      # Raise this once media_variants is actually populated.
+      #
+      # Video at 50MB rather than 500MB because there is no multipart upload or resume: a single
+      # PUT of 500MB over a flaky connection fails often and restarts from zero. 50MB usually
+      # survives one attempt. Raise this when multipart lands.
+      #
+      # Keys MUST be bracket-quoted. Spring's relaxed binding treats characters like "/" as
+      # structure, so an unquoted `video/mp4:` key never binds — the map comes out empty and every
+      # type silently falls back to default-max-size-bytes. That failure is invisible: uploads keep
+      # working, just at the wrong limit.
       max-size-bytes-by-type:
-        image/jpeg: 10485760      # 10 MB
-        image/png: 10485760       # 10 MB
-        image/webp: 10485760      # 10 MB
-        video/mp4: 524288000      # 500 MB
-      default-max-size-bytes: 10485760
+        "[image/jpeg]": 2097152   # 2 MB
+        "[image/png]": 2097152    # 2 MB
+        "[image/webp]": 2097152   # 2 MB
+        "[video/mp4]": 52428800   # 50 MB
+      default-max-size-bytes: 2097152
       uploads-per-hour: 60
 
     scan:
