@@ -1,0 +1,102 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: media-service
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:media}
+    username: ${DB_USERNAME:aura}
+    password: ${DB_PASSWORD:aura}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  # Uploads never pass through this service, so these limits govern only ordinary JSON request
+  # bodies. They are deliberately small: a large multipart body arriving here means something is
+  # bypassing the presigned-URL path, which should fail rather than be quietly accommodated.
+  servlet:
+    multipart:
+      max-file-size: 1MB
+      max-request-size: 1MB
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+aura:
+  security:
+    jwt:
+      jwk-set-uri: ${AURA_JWKS_URI:http://localhost:8081/api/auth/.well-known/jwks.json}
+      issuer: ${AURA_TOKEN_ISSUER:http://localhost:8081}
+
+  media:
+    storage:
+      # Where this service reaches storage (container network inside Compose).
+      endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+      # Where clients reach storage, and therefore what presigned URLs must carry. Defaults to
+      # `endpoint` when unset, which is right only when both sides share one view of the host.
+      public-endpoint: ${MINIO_PUBLIC_ENDPOINT:http://localhost:9000}
+      region: us-east-1
+      access-key: ${MINIO_ROOT_USER:aura}
+      secret-key: ${MINIO_ROOT_PASSWORD:aura-dev-secret}
+      # MinIO addresses buckets as a path segment. Virtual-host style would need wildcard DNS,
+      # which does not exist for a container named "minio". Flip to false on real S3.
+      path-style-access: true
+      quarantine-bucket: aura-quarantine
+      serving-bucket: aura-media
+      upload-url-ttl: 15m
+      download-url-ttl: 15m
+
+    upload:
+      allowed-content-types:
+        - image/jpeg
+        - image/png
+        - image/webp
+        - video/mp4
+      max-size-bytes-by-type:
+        image/jpeg: 10485760      # 10 MB
+        image/png: 10485760       # 10 MB
+        image/webp: 10485760      # 10 MB
+        video/mp4: 524288000      # 500 MB
+      default-max-size-bytes: 10485760
+      uploads-per-hour: 60
+
+    scan:
+      # No-op in development. ClamAV is a ~450MB image plus virus database, and the pipeline's
+      # correctness lives in the quarantine -> validate -> promote state machine rather than in
+      # which scanner runs. Set to "clamav" and point at a clamd instance in production.
+      provider: ${MEDIA_SCAN_PROVIDER:none}
+      clamav-host: ${CLAMAV_HOST:clamav}
+      clamav-port: ${CLAMAV_PORT:3310}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.aura: DEBUG
