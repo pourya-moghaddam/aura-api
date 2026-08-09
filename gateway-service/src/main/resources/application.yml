@@ -54,6 +54,19 @@ spring:
                     redis-rate-limiter.replenishRate: 20
                     redis-rate-limiter.burstCapacity: 40
 
+            - id: media-service
+              uri: lb://MEDIA-SERVICE
+              predicates:
+                - Path=/api/media/**
+              filters:
+                # Tighter than catalog reads: every call here either mints a credential to write
+                # into storage or one to read from it, and both cost more than a page of products.
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@userKeyResolver}"
+                    redis-rate-limiter.replenishRate: 10
+                    redis-rate-limiter.burstCapacity: 20
+
           # No route to notification-service on purpose: it is event-driven and has no public API.
           # Adding a route would expose an SMS-sending service to the internet.
 

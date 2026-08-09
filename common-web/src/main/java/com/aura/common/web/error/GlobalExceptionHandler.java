@@ -8,6 +8,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -60,6 +62,35 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         body.setProperty("correlationId", CorrelationId.current());
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    /**
+     * {@code @PreAuthorize} failures throw this from inside the AOP proxy around the controller
+     * method, which puts it on the normal {@code @ControllerAdvice} resolution path — the same one
+     * every other exception here goes through. Without an explicit handler, it fell through to
+     * {@link #handleUnexpected} and came back as a 500 instead of a 403: confirmed live, a
+     * storefront-audience token hitting a {@code @PreAuthorize}-protected control endpoint got
+     * "unexpected error" instead of "forbidden". This affects every method-security check in every
+     * service that uses this handler, not just the one that surfaced it.
+     *
+     * <p>{@code AuthenticationException} is handled here too for the same structural reason, even
+     * though the resource-server filter chain currently intercepts unauthenticated requests before
+     * they reach a controller at all (confirmed: a request with no token already returns 401
+     * correctly). That filter-level handling is what happens to catch today's cases, not a
+     * guarantee for every future one — a controller-level auth check taken later would hit this
+     * same gap the access-denied case did.
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ProblemDetail handleAccessDenied(AccessDeniedException ex, HttpServletRequest request) {
+        log.debug("Access denied on {} {}", request.getMethod(), request.getRequestURI());
+        return problem(HttpStatus.FORBIDDEN, "access-denied",
+            "You do not have permission to perform this action.", request);
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ProblemDetail handleAuthenticationException(AuthenticationException ex, HttpServletRequest request) {
+        log.debug("Authentication failed on {} {}", request.getMethod(), request.getRequestURI());
+        return problem(HttpStatus.UNAUTHORIZED, "unauthenticated", "Authentication is required.", request);
     }
 
     /**

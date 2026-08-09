@@ -28,17 +28,35 @@ RUN chmod +x mvnw
 
 # Every module's pom, even ones this image does not build. Maven reads the whole reactor before
 # it applies -pl, so a module listed in the parent pom whose directory is missing is a hard error
-# ("Child module /build/catalog-service of /build/pom.xml does not exist"). Poms are tiny and
+# ("Child module /build/media-service of /build/pom.xml does not exist"). Poms are tiny and
 # change rarely, so this also makes a stable layer to resolve dependencies against.
+#
+# !! THIS LIST MUST MATCH <modules> IN pom.xml !!
+# Adding a module to the parent without adding it here breaks *every* image build, not just the
+# new module's, and the Maven error names the missing directory rather than this file. The guard
+# below turns that into an actionable message instead of a confusing one.
 COPY pom.xml ./
 COPY common-events/pom.xml common-events/
 COPY common-web/pom.xml common-web/
 COPY common-security/pom.xml common-security/
 COPY auth-service/pom.xml auth-service/
 COPY catalog-service/pom.xml catalog-service/
+COPY media-service/pom.xml media-service/
 COPY notification-service/pom.xml notification-service/
 COPY discovery-service/pom.xml discovery-service/
 COPY gateway-service/pom.xml gateway-service/
+
+# Fails fast, and says exactly what to do, when the list above drifts from the parent pom.
+RUN set -eu; \
+    missing=""; \
+    for module in $(sed -n 's:.*<module>\(.*\)</module>.*:\1:p' pom.xml); do \
+        [ -f "$module/pom.xml" ] || missing="$missing $module"; \
+    done; \
+    if [ -n "$missing" ]; then \
+        echo "ERROR: pom.xml declares modules with no COPY line in the Dockerfile:$missing"; \
+        echo "Add 'COPY <module>/pom.xml <module>/' above."; \
+        exit 1; \
+    fi
 
 # Sources for the target module and the shared libraries only. A change to catalog-service does
 # not invalidate this layer in the auth-service image.

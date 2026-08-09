@@ -24,6 +24,13 @@
         <spring.cloud.version>2025.1.2</spring.cloud.version>
         <testcontainers.version>1.20.5</testcontainers.version>
         <lombok.version>1.18.42</lombok.version>
+        <!--
+          The AWS SDK rather than the MinIO client: MinIO speaks the S3 API, so writing against the
+          SDK means moving to real S3 or a local cloud provider later is a configuration change
+          instead of a rewrite. Its presigner is also what the "never route bytes through the
+          backend" and "signed download URLs" rules depend on.
+        -->
+        <aws.sdk.version>2.29.52</aws.sdk.version>
 
         <maven.compiler.plugin.version>3.15.0</maven.compiler.plugin.version>
         <maven.enforcer.plugin.version>3.5.0</maven.enforcer.plugin.version>
@@ -46,6 +53,7 @@
         <module>auth-service</module>
         <module>notification-service</module>
         <module>catalog-service</module>
+        <module>media-service</module>
         <module>discovery-service</module>
         <module>gateway-service</module>
     </modules>
@@ -70,6 +78,13 @@
                 <groupId>org.testcontainers</groupId>
                 <artifactId>testcontainers-bom</artifactId>
                 <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>${aws.sdk.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

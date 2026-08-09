@@ -214,6 +214,40 @@ services:
       retries: 12
       start_period: 40s
 
+  media-service:
+    <<: *service-defaults
+    build:
+      context: .
+      args:
+        SERVICE: media-service
+    image: aura/media-service:${TAG:-dev}
+    environment:
+      <<: *app-env
+      DB_NAME: media
+      # Internal: how this container talks to MinIO.
+      MINIO_ENDPOINT: http://minio:9000
+      # Public: what goes into presigned URLs. "minio" does not resolve in a browser, so signing
+      # with the internal name yields URLs that fail DNS on the client with nothing explaining why.
+      # In production this becomes the public storage or CDN hostname.
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-http://localhost:9000}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-aura}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-aura-dev-secret}
+      # No-op scanner in development; see application.yml for why.
+      MEDIA_SCAN_PROVIDER: ${MEDIA_SCAN_PROVIDER:-none}
+    ports:
+      - "8084:8084"
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      minio: {condition: service_healthy}
+      discovery-service: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8084/actuator/health/readiness || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
   notification-service:
     <<: *service-defaults
     build:

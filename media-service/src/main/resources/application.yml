@@ -1,0 +1,117 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: media-service
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:media}
+    username: ${DB_USERNAME:aura}
+    password: ${DB_PASSWORD:aura}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  # Uploads never pass through this service, so these limits govern only ordinary JSON request
+  # bodies. They are deliberately small: a large multipart body arriving here means something is
+  # bypassing the presigned-URL path, which should fail rather than be quietly accommodated.
+  servlet:
+    multipart:
+      max-file-size: 1MB
+      max-request-size: 1MB
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+aura:
+  security:
+    jwt:
+      jwk-set-uri: ${AURA_JWKS_URI:http://localhost:8081/api/auth/.well-known/jwks.json}
+      issuer: ${AURA_TOKEN_ISSUER:http://localhost:8081}
+
+  media:
+    storage:
+      # Where this service reaches storage (container network inside Compose).
+      endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+      # Where clients reach storage, and therefore what presigned URLs must carry. Defaults to
+      # `endpoint` when unset, which is right only when both sides share one view of the host.
+      public-endpoint: ${MINIO_PUBLIC_ENDPOINT:http://localhost:9000}
+      region: us-east-1
+      access-key: ${MINIO_ROOT_USER:aura}
+      secret-key: ${MINIO_ROOT_PASSWORD:aura-dev-secret}
+      # MinIO addresses buckets as a path segment. Virtual-host style would need wildcard DNS,
+      # which does not exist for a container named "minio". Flip to false on real S3.
+      path-style-access: true
+      quarantine-bucket: aura-quarantine
+      serving-bucket: aura-media
+      upload-url-ttl: 15m
+      download-url-ttl: 15m
+
+    upload:
+      allowed-content-types:
+        - image/jpeg
+        - image/png
+        - image/webp
+        - video/mp4
+      # Sized around what the first release deliberately does NOT have yet.
+      #
+      # Images at 2MB rather than 10MB because there is no thumbnail pipeline: a category page
+      # showing 20 products serves originals, and at 10MB each that is 200MB for one page - which
+      # on a mobile connection is a page that never finishes loading rather than a slow one.
+      # Raise this once media_variants is actually populated.
+      #
+      # Video at 50MB rather than 500MB because there is no multipart upload or resume: a single
+      # PUT of 500MB over a flaky connection fails often and restarts from zero. 50MB usually
+      # survives one attempt. Raise this when multipart lands.
+      #
+      # Keys MUST be bracket-quoted. Spring's relaxed binding treats characters like "/" as
+      # structure, so an unquoted `video/mp4:` key never binds — the map comes out empty and every
+      # type silently falls back to default-max-size-bytes. That failure is invisible: uploads keep
+      # working, just at the wrong limit.
+      max-size-bytes-by-type:
+        "[image/jpeg]": 2097152   # 2 MB
+        "[image/png]": 2097152    # 2 MB
+        "[image/webp]": 2097152   # 2 MB
+        "[video/mp4]": 52428800   # 50 MB
+      default-max-size-bytes: 2097152
+      uploads-per-hour: 60
+
+    scan:
+      # No-op in development. ClamAV is a ~450MB image plus virus database, and the pipeline's
+      # correctness lives in the quarantine -> validate -> promote state machine rather than in
+      # which scanner runs. Set to "clamav" and point at a clamd instance in production.
+      provider: ${MEDIA_SCAN_PROVIDER:none}
+      clamav-host: ${CLAMAV_HOST:clamav}
+      clamav-port: ${CLAMAV_PORT:3310}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.aura: DEBUG

@@ -59,12 +59,26 @@ management:
 aura:
   auth:
     otp:
-      ttl-minutes: 3
+      ttl: 3m
+      length: 6
+      # Wrong guesses before the code is burned.
+      max-attempts: 5
+      resend-cooldown: 60s
+      max-per-phone-per-hour: 5
+      max-per-ip-per-hour: 20
+      # Daily circuit breaker on total sends - the cap on how large the SMS bill can get if every
+      # other limit is evaded by a distributed source.
+      max-per-day-global: 2000
+      # HMAC key for hashing codes at rest. Startup fails under the prod profile if unset.
+      pepper: ${AURA_AUTH_OTP_PEPPER:}
       otp-binding-name: "otpRequestedOut-out-0"
     token:
       issuer: ${AURA_TOKEN_ISSUER:http://localhost:8081}
       access-token-ttl: 15m
       refresh-token-ttl: 30d
+      # False by default so local HTTP does not silently drop the cookie. Must be true in prod -
+      # set AURA_TOKEN_COOKIE_SECURE=true there.
+      cookie-secure: ${AURA_TOKEN_COOKIE_SECURE:false}
       rsa:
         # Supplied via AURA_AUTH_TOKEN_RSA_PRIVATE_KEY_PEM / _PUBLIC_KEY_PEM.
         # Left empty for local development, where an ephemeral keypair is generated at startup.
@@ -72,6 +86,13 @@ aura:
         private-key-pem: ${AURA_AUTH_TOKEN_RSA_PRIVATE_KEY_PEM:}
         public-key-pem: ${AURA_AUTH_TOKEN_RSA_PUBLIC_KEY_PEM:}
         key-id: ${AURA_AUTH_TOKEN_RSA_KEY_ID:aura-signing-key}
+    super-admin:
+      # Created once on first startup if no SUPER_ADMIN exists yet. Left empty in dev - the
+      # bootstrap runner just warns and skips rather than creating an account with a known
+      # password. Startup fails under the prod profile if these are unset - see
+      # SuperAdminBootstrapRunner.
+      phone: ${AURA_SUPERADMIN_PHONE:}
+      password: ${AURA_SUPERADMIN_PASSWORD:}
   kafka:
     topics:
       otp-requested: ${KAFKA_TOPIC_OTP_REQUESTED:aura.auth.otp-requested.v1}
