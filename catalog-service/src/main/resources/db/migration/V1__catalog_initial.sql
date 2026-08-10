@@ -81,7 +81,10 @@ CREATE TABLE colors
 (
     id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name       VARCHAR(50) NOT NULL UNIQUE,
-    hex_code   CHAR(7)     NOT NULL,
+    -- VARCHAR, not CHAR. Postgres pads CHAR(n) on read, so a comparison against an unpadded value
+    -- silently fails; it is also what Hibernate expects for a length-bounded String, and
+    -- ddl-auto=validate rejects the mismatch outright at startup.
+    hex_code   VARCHAR(7)  NOT NULL,
     sort_order INT         NOT NULL DEFAULT 0,
     is_active  BOOLEAN     NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

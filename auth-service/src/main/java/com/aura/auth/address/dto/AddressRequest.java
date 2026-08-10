@@ -46,6 +46,18 @@ public record AddressRequest(
     @Pattern(regexp = "^[0-9]{10}$", message = "Postal code must be exactly 10 digits")
     String postalCode,
 
-    boolean isDefault
+    Boolean isDefault
 ) {
+
+    /**
+     * Boxed and defaulted rather than a primitive {@code boolean}. A primitive record component
+     * makes its JSON property effectively mandatory: omit it and Jackson cannot construct the
+     * record, which surfaces as an opaque 400 "Failed to read request" naming no field. Omitting
+     * this flag should mean "not the default", not "malformed request".
+     */
+    public AddressRequest {
+        if (isDefault == null) {
+            isDefault = false;
+        }
+    }
 }

@@ -23,8 +23,20 @@ public record CategoryRequest(
         message = "Slug must be lowercase letters, digits and single hyphens")
     String slug,
 
-    int sortOrder,
+    Integer sortOrder,
 
     Boolean isActive
 ) {
+
+    /**
+     * Boxed and defaulted rather than a primitive {@code int}. A primitive record component makes
+     * its JSON property effectively mandatory: omit it and Jackson cannot construct the record,
+     * which surfaces as an opaque 400 "Failed to read request" naming no field. Sort order is
+     * genuinely optional, so it defaults instead.
+     */
+    public CategoryRequest {
+        if (sortOrder == null) {
+            sortOrder = 0;
+        }
+    }
 }
