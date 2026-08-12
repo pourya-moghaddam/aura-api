@@ -41,6 +41,15 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
+        <!--
+          Explicit: spring-boot-starter-web does NOT bring RestClient's auto-configuration in Boot
+          4, which split it into its own module. Without this there is no RestClient.Builder bean
+          and the context fails to start - and nothing about the compile would have told you.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-restclient</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>

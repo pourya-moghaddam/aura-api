@@ -201,12 +201,16 @@ services:
     environment:
       <<: *app-env
       DB_NAME: catalog
+      AURA_MEDIA_BASE_URL: http://media-service:8084
     ports:
       - "8083:8083"
     depends_on:
       postgres: {condition: service_healthy}
       kafka: {condition: service_healthy}
       discovery-service: {condition: service_healthy}
+      # Attaching media to a product asks media-service whether the file is servable and whose it
+      # is, so publishing depends on it being up. Deliberately fails closed.
+      media-service: {condition: service_healthy}
     healthcheck:
       test: ["CMD-SHELL", "curl -fs http://localhost:8083/actuator/health/readiness || exit 1"]
       interval: 10s
