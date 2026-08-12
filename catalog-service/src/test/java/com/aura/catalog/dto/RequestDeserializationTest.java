@@ -2,6 +2,9 @@ package com.aura.catalog.dto;
 
 import com.aura.catalog.category.dto.CategoryRequest;
 import com.aura.catalog.color.dto.ColorRequest;
+import com.aura.catalog.field.FieldDataType;
+import com.aura.catalog.field.dto.FieldRequest;
+import com.aura.catalog.field.dto.FieldValueRequest;
 import com.aura.catalog.size.dto.SizeRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
@@ -65,5 +68,32 @@ class RequestDeserializationTest {
 
         assertThat(request.sortOrder()).isZero();
         assertThat(request.categoryId()).isNull();
+    }
+
+    @Test
+    @DisplayName("field falls back to a SELECT, filterable, optional attribute")
+    void fieldDefaults() throws Exception {
+        FieldRequest request = objectMapper.readValue(
+            """
+            {"categoryId":1,"name":"Material"}
+            """, FieldRequest.class);
+
+        assertThat(request.dataType()).isEqualTo(FieldDataType.SELECT);
+        assertThat(request.isFilterable()).isTrue();
+        assertThat(request.isRequired()).isFalse();
+        assertThat(request.sortOrder()).isZero();
+        assertThat(request.slug()).isNull();
+    }
+
+    @Test
+    @DisplayName("field value deserializes with only a value")
+    void fieldValueDefaults() throws Exception {
+        FieldValueRequest request = objectMapper.readValue(
+            """
+            {"value":"Cotton"}
+            """, FieldValueRequest.class);
+
+        assertThat(request.sortOrder()).isZero();
+        assertThat(request.slug()).isNull();
     }
 }

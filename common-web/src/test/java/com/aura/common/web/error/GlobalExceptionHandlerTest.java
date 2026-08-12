@@ -2,10 +2,20 @@ package com.aura.common.web.error;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.MethodParameter;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.validation.BeanPropertyBindingResult;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.context.request.ServletWebRequest;
+
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -68,5 +78,42 @@ class GlobalExceptionHandlerTest {
         assertThat(body.getProperties()).containsEntry("errorCode", "internal-error");
         // The client gets nothing more specific than that - the raw message must never leak.
         assertThat(body.getDetail()).doesNotContain("something broke");
+    }
+
+    @Test
+    void everyProblemCarriesTheInstanceAndACorrelationId() {
+        // The correlation ID is the only handle a user can quote when reporting a 500, so a
+        // response without one makes the incident untraceable.
+        ProblemDetail body = handler.handleUnexpected(
+            new RuntimeException("boom"), request("/api/catalog/categories/7"));
+
+        assertThat(body.getInstance()).hasToString("/api/catalog/categories/7");
+        assertThat(body.getProperties()).containsKey("correlationId");
+        assertThat(body.getType()).hasToString("https://aura.local/problems/internal-error");
+    }
+
+    @Test
+    void validationFailuresNameTheOffendingFields() {
+        // The whole point of the separate handler: a client has to be able to show the error next
+        // to the right input, which needs the field name, not just "bad request".
+        BeanPropertyBindingResult binding = new BeanPropertyBindingResult(new Object(), "colorRequest");
+        binding.addError(new FieldError("colorRequest", "name", "Name is required"));
+        binding.addError(new FieldError("colorRequest", "hexCode", "Hex code must be in the form #RRGGBB"));
+
+        ResponseEntity<Object> response = handler.handleMethodArgumentNotValid(
+            new MethodArgumentNotValidException((MethodParameter) null, binding),
+            new HttpHeaders(),
+            HttpStatus.BAD_REQUEST,
+            new ServletWebRequest(new MockHttpServletRequest()));
+
+        ProblemDetail body = (ProblemDetail) response.getBody();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(body).isNotNull();
+        assertThat(body.getProperties()).containsEntry("errorCode", "validation-failed");
+        @SuppressWarnings("unchecked")
+        Map<String, String> fieldErrors = (Map<String, String>) body.getProperties().get("fieldErrors");
+        assertThat(fieldErrors)
+            .containsEntry("name", "Name is required")
+            .containsEntry("hexCode", "Hex code must be in the form #RRGGBB");
     }
 }
