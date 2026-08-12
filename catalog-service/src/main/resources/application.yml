@@ -24,6 +24,16 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+  cloud:
+    stream:
+      bindings:
+        productChangedOut-out-0:
+          destination: ${aura.kafka.topics.product-changed:aura.catalog.product-changed.v1}
+          producer:
+            # Events for one product must land on one partition, or a redelivered older document
+            # can be indexed after a newer one. The header is set per message by the publisher.
+            partition-key-expression: headers['partitionKey']
+
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 

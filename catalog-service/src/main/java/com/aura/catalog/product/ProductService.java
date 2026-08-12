@@ -39,6 +39,7 @@ public class ProductService {
     private final ProductMediaRepository productMediaRepository;
     private final ProductFieldValueRepository productFieldValueRepository;
     private final ProductFieldValueService productFieldValueService;
+    private final ProductEventPublisher productEventPublisher;
     private final CategoryService categoryService;
 
     // --- reads ---------------------------------------------------------------------------------
@@ -89,7 +90,9 @@ public class ProductService {
 
         productFieldValueService.replace(saved, request.fieldValues());
 
-        return withDetail(productRepository.save(saved));
+        Product stored = productRepository.save(saved);
+        productEventPublisher.productChanged(stored);
+        return withDetail(stored);
     }
 
     @Transactional
@@ -112,7 +115,9 @@ public class ProductService {
         // than a rejection the seller can act on.
         productFieldValueService.replace(product, request.fieldValues());
 
-        return withDetail(productRepository.save(product));
+        Product stored = productRepository.save(product);
+        productEventPublisher.productChanged(stored);
+        return withDetail(stored);
     }
 
     /**
@@ -139,14 +144,21 @@ public class ProductService {
         productFieldValueService.replace(product, currentFieldValuesAsRequest(productId));
 
         product.publish();
-        return withDetail(productRepository.save(product));
+        Product stored = productRepository.save(product);
+        productEventPublisher.productChanged(stored);
+        return withDetail(stored);
     }
 
     @Transactional
     public ProductResponse archive(long userId, long productId) {
         Product product = requireOwned(userId, productId);
         product.archive();
-        return withDetail(productRepository.save(product));
+
+        Product stored = productRepository.save(product);
+        // Archiving takes it off the storefront, so the index has to lose it too - otherwise it
+        // stays findable through search while its product page 404s.
+        productEventPublisher.productDeleted(stored);
+        return withDetail(stored);
     }
 
     /**
@@ -161,6 +173,10 @@ public class ProductService {
             throw new BusinessRuleException("product-not-deletable",
                 "Only a draft can be deleted. Archive this product instead.");
         }
+        // Emitted before the delete so the row is still readable while the document is built.
+        // A draft was never indexed, but sending it is harmless and keeps the rule simple: every
+        // disappearance produces an event.
+        productEventPublisher.productDeleted(product);
         productRepository.delete(product);
     }
 
@@ -186,10 +202,19 @@ public class ProductService {
         return product;
     }
 
-    /** Recomputes the denormalised price range and stock total. Called after any variant change. */
+    /**
+     * Recomputes the denormalised price range and stock total, then re-publishes.
+     *
+     * <p>Called after any variant or stock change. Those move price and availability, which are
+     * exactly what the storefront sorts and filters on - so skipping the event here would leave
+     * search offering a product at a price it no longer has, or as in stock when it is not.
+     */
     @Transactional
     public void refreshDerivedFields(long productId) {
         productRepository.recomputeDerivedFields(productId);
+
+        // Re-read: the recompute ran as SQL, so the in-memory entity still holds the old figures.
+        productRepository.findById(productId).ifPresent(productEventPublisher::productChanged);
     }
 
     private ProductResponse withDetail(Product product) {

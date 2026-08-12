@@ -59,6 +59,9 @@ class ProductServiceTest {
     private ProductFieldValueService productFieldValueService;
 
     @Mock
+    private ProductEventPublisher productEventPublisher;
+
+    @Mock
     private CategoryService categoryService;
 
     private ProductService service;
@@ -67,7 +70,7 @@ class ProductServiceTest {
     void setUp() {
         service = new ProductService(productRepository, productVariantRepository,
             productMediaRepository, productFieldValueRepository, productFieldValueService,
-            categoryService);
+            productEventPublisher, categoryService);
         authenticateAs(SELLER, "SELLER");
     }
 
@@ -332,6 +335,64 @@ class ProductServiceTest {
 
             assertThatThrownBy(() -> service.delete(SELLER, PRODUCT_ID))
                 .isInstanceOf(BusinessRuleException.class);
+        }
+    }
+
+    @Nested
+    class SearchIndexEvents {
+
+        @Test
+        @DisplayName("publishing emits a change, so the product becomes findable")
+        void publishEmitsChange() {
+            noMediaOrVariants();
+            Product draft = product(PRODUCT_ID, SELLER, ProductStatus.DRAFT);
+            when(productRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(draft));
+            when(productVariantRepository.countByProductIdAndIsActiveTrue(PRODUCT_ID)).thenReturn(1L);
+            when(productMediaRepository.countByProductId(PRODUCT_ID)).thenReturn(1L);
+            when(productFieldValueRepository.findByProductId(PRODUCT_ID)).thenReturn(List.of());
+            echoSave();
+
+            service.publish(SELLER, PRODUCT_ID);
+
+            verify(productEventPublisher).productChanged(draft);
+        }
+
+        @Test
+        @DisplayName("archiving emits a deletion, so it stops being findable")
+        void archiveEmitsDeletion() {
+            // Without this the product stays in the index while its page 404s - findable through
+            // search, broken when clicked.
+            noMediaOrVariants();
+            Product live = product(PRODUCT_ID, SELLER, ProductStatus.ACTIVE);
+            when(productRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(live));
+            echoSave();
+
+            service.archive(SELLER, PRODUCT_ID);
+
+            verify(productEventPublisher).productDeleted(live);
+        }
+
+        @Test
+        @DisplayName("deleting a draft emits a deletion too")
+        void deleteEmitsDeletion() {
+            Product draft = product(PRODUCT_ID, SELLER, ProductStatus.DRAFT);
+            when(productRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(draft));
+
+            service.delete(SELLER, PRODUCT_ID);
+
+            verify(productEventPublisher).productDeleted(draft);
+        }
+
+        @Test
+        @DisplayName("a variant or stock change re-publishes, because price and availability moved")
+        void derivedFieldRefreshEmitsChange() {
+            Product live = product(PRODUCT_ID, SELLER, ProductStatus.ACTIVE);
+            when(productRepository.findById(PRODUCT_ID)).thenReturn(Optional.of(live));
+
+            service.refreshDerivedFields(PRODUCT_ID);
+
+            verify(productRepository).recomputeDerivedFields(PRODUCT_ID);
+            verify(productEventPublisher).productChanged(live);
         }
     }
 
