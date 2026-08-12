@@ -36,6 +36,14 @@ eureka:
 
 aura:
   catalog:
+    internal:
+      # Shared secret for /api/internal/**, which order-service uses to hold and settle stock.
+      # No default: an unset key makes every internal call fail closed rather than pass.
+      api-key: ${AURA_INTERNAL_API_KEY:}
+    inventory:
+      # How often abandoned stock holds are swept up. Short, because the stock is unsellable until
+      # it happens.
+      expiry-sweep-interval: ${AURA_STOCK_SWEEP_INTERVAL:PT30S}
     media:
       # Direct, not via the gateway: the gateway authenticates traffic arriving from outside, and
       # routing an internal call through it adds a hop and a second thing that can be down.

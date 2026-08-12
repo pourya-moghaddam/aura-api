@@ -1,6 +1,8 @@
 package com.aura.catalog.product;
 
 import com.aura.catalog.color.ColorService;
+import com.aura.catalog.inventory.Inventory;
+import com.aura.catalog.inventory.InventoryRepository;
 import com.aura.catalog.product.dto.VariantRequest;
 import com.aura.catalog.product.dto.VariantResponse;
 import com.aura.catalog.size.SizeService;
@@ -26,6 +28,7 @@ import java.util.Locale;
 public class ProductVariantService {
 
     private final ProductVariantRepository productVariantRepository;
+    private final InventoryRepository inventoryRepository;
     private final ProductService productService;
     private final ColorService colorService;
     private final SizeService sizeService;
@@ -50,7 +53,15 @@ public class ProductVariantService {
             sku, request.price(), request.compareAtPrice());
         variant.setActive(request.isActive());
 
-        VariantResponse response = VariantResponse.from(productVariantRepository.save(variant));
+        ProductVariant saved = productVariantRepository.save(variant);
+
+        // Every variant gets a stock row immediately, at zero. Creating it lazily on the first
+        // stock edit would leave new variants missing from the seller's stock screen entirely -
+        // present in the catalogue, absent from the list of things to stock, and therefore easy
+        // to publish with no inventory behind them.
+        inventoryRepository.save(Inventory.forVariant(saved.getId(), 0));
+
+        VariantResponse response = VariantResponse.from(saved);
         productService.refreshDerivedFields(productId);
         return response;
     }

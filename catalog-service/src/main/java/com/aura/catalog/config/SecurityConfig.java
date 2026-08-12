@@ -11,6 +11,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
  * Catalog reads are public — that is the storefront. Everything else requires a token, and the
@@ -26,6 +27,7 @@ import org.springframework.security.web.SecurityFilterChain;
 public class SecurityConfig {
 
     private final AuraJwtAuthenticationConverter jwtAuthenticationConverter;
+    private final InternalApiProperties internalApiProperties;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -37,8 +39,14 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/catalog/**").permitAll()
+                // Not open: authenticated by the API-key filter below, which runs first and
+                // rejects anything without the shared key. These carry no user identity at all,
+                // because guest checkout means there may not be one.
+                .requestMatchers("/api/internal/**").permitAll()
                 .anyRequest().authenticated()
             )
+            .addFilterBefore(new InternalApiKeyFilter(internalApiProperties),
+                UsernamePasswordAuthenticationFilter.class)
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
             );

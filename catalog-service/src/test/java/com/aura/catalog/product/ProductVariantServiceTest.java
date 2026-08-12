@@ -38,6 +38,9 @@ class ProductVariantServiceTest {
     private ProductVariantRepository productVariantRepository;
 
     @Mock
+    private com.aura.catalog.inventory.InventoryRepository inventoryRepository;
+
+    @Mock
     private ProductService productService;
 
     @Mock
@@ -51,7 +54,7 @@ class ProductVariantServiceTest {
     @BeforeEach
     void setUp() {
         service = new ProductVariantService(
-            productVariantRepository, productService, colorService, sizeService);
+            productVariantRepository, inventoryRepository, productService, colorService, sizeService);
     }
 
     private Product product(ProductStatus status) {
@@ -81,8 +84,15 @@ class ProductVariantServiceTest {
             .thenReturn(List.of(new SizeResponse(sizeId, "L", null, 0, true)));
     }
 
+    /** Stands in for the database assigning an id, which the service needs to create a stock row. */
     private void echoSave() {
-        when(productVariantRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(productVariantRepository.save(any())).thenAnswer(i -> {
+            ProductVariant saved = i.getArgument(0);
+            if (saved.getId() == null) {
+                saved.setId(42L);
+            }
+            return saved;
+        });
     }
 
     @Test

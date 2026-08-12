@@ -215,6 +215,14 @@
                     <includes>
                         <include>**/*IT.java</include>
                     </includes>
+                    <!--
+                      Explicit, because `verify` runs failsafe after spring-boot:repackage has
+                      already replaced the main artifact with a fat jar whose classes live under
+                      BOOT-INF/classes. Failsafe would put that jar on the classpath and find
+                      none of them - every IT failing to even load with NoClassDefFoundError.
+                      spring-boot-starter-parent sets this for you; this project does not use it.
+                    -->
+                    <classesDirectory>${project.build.outputDirectory}</classesDirectory>
                 </configuration>
                 <executions>
                     <execution>
