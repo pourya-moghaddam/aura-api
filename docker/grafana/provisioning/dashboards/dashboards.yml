@@ -1,0 +1,9 @@
+apiVersion: 1
+
+providers:
+  - name: aura
+    type: file
+    # Provisioned from the repository rather than saved through the UI, so a dashboard someone
+    # relies on cannot vanish with a container.
+    options:
+      path: /etc/grafana/dashboards

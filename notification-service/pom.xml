@@ -35,6 +35,17 @@
         </dependency>
 
         <!--
+          Without this the `prometheus` entry in the actuator exposure list below does nothing:
+          the endpoint only exists when a registry is on the classpath. It read as configured for
+          months and served 404.
+        -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!--
           common-web's GlobalExceptionHandler handles AccessDeniedException, and common-web
           declares spring-security-core as provided - so every consumer has to supply it. Every
           other service does, through the security starter. This one has no API to protect and no

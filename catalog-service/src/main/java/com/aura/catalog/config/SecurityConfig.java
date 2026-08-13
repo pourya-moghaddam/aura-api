@@ -70,7 +70,10 @@ public class SecurityConfig {
             .cors(AbstractHttpConfigurer::disable)
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
+                // Everything under /actuator, and only because it no longer answers on this
+                // port at all: management.server.port moves it to 9091, which is never published.
+                // Permitting it here is what lets Prometheus scrape over the Docker network.
+                .requestMatchers("/actuator/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/catalog/**").permitAll()
                 .requestMatchers(HttpMethod.HEAD, "/api/catalog/**").permitAll()
                 // Not open: authenticated by the API-key filter below, which runs first and

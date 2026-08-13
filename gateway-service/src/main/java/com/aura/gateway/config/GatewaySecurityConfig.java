@@ -56,7 +56,10 @@ public class GatewaySecurityConfig {
             .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .authorizeExchange(exchange -> exchange
-                .pathMatchers("/actuator/health/**", "/actuator/info").permitAll()
+                // Everything under /actuator, and only because it no longer answers on this
+                // port at all: management.server.port moves it to 9091, which is never published.
+                // Permitting it here is what lets Prometheus scrape over the Docker network.
+                .pathMatchers("/actuator/**").permitAll()
                 // The control-panel boundary. A storefront-audience token is rejected here even if
                 // the user holds ADMIN, so a plain session cannot be walked into the panel.
                 .pathMatchers("/api/control/**").hasAuthority(TokenAudience.CONTROL.authority())

@@ -40,7 +40,10 @@ public class SecurityConfig {
             .cors(AbstractHttpConfigurer::disable)
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
+                // Everything under /actuator, and only because it no longer answers on this
+                // port at all: management.server.port moves it to 9091, which is never published.
+                // Permitting it here is what lets Prometheus scrape over the Docker network.
+                .requestMatchers("/actuator/**").permitAll()
                 // Guest checkout: cart, delivery options and the payment callback all have to work
                 // for someone with no account and no token.
                 .requestMatchers("/api/orders/cart/**").permitAll()

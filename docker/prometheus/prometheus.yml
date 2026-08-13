@@ -1,0 +1,37 @@
+# What Prometheus scrapes.
+#
+# Static targets rather than Eureka service discovery, deliberately: monitoring that depends on the
+# thing it is monitoring goes blind exactly when it is needed. If discovery-service falls over,
+# these targets keep being scraped and the graphs show what happened.
+#
+# Every target is <service>:9091 - the management port, which no service publishes. Prometheus
+# reaches it over the Docker network and nothing outside can.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: aura
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [discovery-service:9091]
+        labels: {service: discovery-service}
+      - targets: [gateway-service:9091]
+        labels: {service: gateway-service}
+      - targets: [auth-service:9091]
+        labels: {service: auth-service}
+      - targets: [catalog-service:9091]
+        labels: {service: catalog-service}
+      - targets: [order-service:9091]
+        labels: {service: order-service}
+      - targets: [media-service:9091]
+        labels: {service: media-service}
+      - targets: [search-service:9091]
+        labels: {service: search-service}
+      - targets: [notification-service:9091]
+        labels: {service: notification-service}
+
+  - job_name: prometheus
+    static_configs:
+      - targets: [localhost:9090]

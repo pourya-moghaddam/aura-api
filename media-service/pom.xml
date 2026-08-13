@@ -54,6 +54,17 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+
+        <!--
+          Without this the `prometheus` entry in the actuator exposure list below does nothing:
+          the endpoint only exists when a registry is on the classpath. It read as configured for
+          months and served 404.
+        -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <scope>runtime</scope>
+        </dependency>
         <!-- Backs the per-user upload rate limit. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

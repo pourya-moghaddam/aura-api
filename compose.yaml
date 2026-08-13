@@ -157,7 +157,7 @@ services:
     ports:
       - "8761:8761"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8761/actuator/health || exit 1"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:9091/actuator/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -185,7 +185,7 @@ services:
       kafka: {condition: service_healthy}
       discovery-service: {condition: service_healthy}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8081/actuator/health/readiness || exit 1"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:9091/actuator/health/readiness || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -213,7 +213,7 @@ services:
       # is, so publishing depends on it being up. Deliberately fails closed.
       media-service: {condition: service_healthy}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8083/actuator/health/readiness || exit 1"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:9091/actuator/health/readiness || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -240,7 +240,7 @@ services:
       # Checkout holds stock through catalog's internal API, so it cannot complete without it.
       catalog-service: {condition: service_healthy}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8082/actuator/health/readiness || exit 1"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:9091/actuator/health/readiness || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -274,7 +274,7 @@ services:
       minio: {condition: service_healthy}
       discovery-service: {condition: service_healthy}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8084/actuator/health/readiness || exit 1"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:9091/actuator/health/readiness || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -302,7 +302,7 @@ services:
       kafka: {condition: service_healthy}
       discovery-service: {condition: service_healthy}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8085/actuator/health/readiness || exit 1"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:9091/actuator/health/readiness || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -328,7 +328,7 @@ services:
       kafka: {condition: service_healthy}
       discovery-service: {condition: service_healthy}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8082/actuator/health/readiness || exit 1"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:9091/actuator/health/readiness || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -350,11 +350,58 @@ services:
       discovery-service: {condition: service_healthy}
       auth-service: {condition: service_healthy}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8080/actuator/health/readiness || exit 1"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:9091/actuator/health/readiness || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 40s
+
+  # ---------------------------------------------------------------------------------------------
+  # Observability
+  #
+  # Both scrape and read over the Docker network only. Their own ports are published so a developer
+  # can open them, but nothing they talk to is: every service's actuator lives on 9091, which no
+  # service publishes.
+  # ---------------------------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    restart: unless-stopped
+    networks: [aura]
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # Long enough to see a week-on-week pattern, short enough that a laptop survives it.
+      - --storage.tsdb.retention.time=15d
+    ports: ["9090:9090"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:9090/-/healthy || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  grafana:
+    image: grafana/grafana:11.5.1
+    restart: unless-stopped
+    networks: [aura]
+    environment:
+      # Anonymous view access, because this stack is a laptop and a login prompt in front of a
+      # dashboard nobody can change is friction without a benefit. compose.prod.yaml sets a real
+      # admin password and turns this off.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports: ["3000:3000"]
+    depends_on:
+      prometheus: {condition: service_healthy}
 
 networks:
   aura:
@@ -366,3 +413,5 @@ volumes:
   kafka_data:
   elasticsearch_data:
   minio_data:
+  prometheus_data:
+  grafana_data:

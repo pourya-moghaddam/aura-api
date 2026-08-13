@@ -47,6 +47,26 @@ logging:
     com.aura: DEBUG
 
 management:
+  # Actuator moves off the application port onto its own, and that port is never published.
+  # Metrics carry business shape - order counts, queue depth, error rates - and "/actuator is not
+  # reachable from outside" becomes structural rather than a rule someone has to keep enforcing in
+  # every service's security config. It also means the gateway cannot route to it by accident.
+  server:
+    port: 9091
+  metrics:
+    distribution:
+      # Without this Micrometer publishes only a count and a sum for request timings, so any
+      # percentile query returns nothing at all - the dashboard panel renders empty and reads as
+      # "no traffic" rather than "no data". A mean hides the case that matters: it stays flat while
+      # one shopper in twenty waits eight seconds for checkout.
+      percentiles-histogram:
+        http.server.requests: true
+      # Bounded on purpose. An unbounded histogram is one series per bucket per endpoint per
+      # status, which is how a metrics endpoint quietly becomes the slowest thing in the service.
+      minimum-expected-value:
+        http.server.requests: 10ms
+      maximum-expected-value:
+        http.server.requests: 10s
   endpoints:
     web:
       exposure:
