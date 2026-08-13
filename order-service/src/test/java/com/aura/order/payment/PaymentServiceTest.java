@@ -1,8 +1,12 @@
 package com.aura.order.payment;
 
+import com.aura.common.events.OrderPaidEvent;
+import com.aura.common.events.Topics;
 import com.aura.common.web.error.BusinessRuleException;
 import com.aura.order.catalog.CatalogGateway;
 import com.aura.order.order.Order;
+import com.aura.order.order.OrderItem;
+import com.aura.order.order.OrderItemRepository;
 import com.aura.order.order.OrderRepository;
 import com.aura.order.order.PaymentStatus;
 import com.aura.order.payment.dto.PaymentStartResponse;
@@ -14,11 +18,13 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -26,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -58,6 +65,12 @@ class PaymentServiceTest {
     @Mock
     private ZarinpalClient zarinpalClient;
 
+    @Mock
+    private OrderItemRepository orderItemRepository;
+
+    @Mock
+    private com.aura.order.outbox.OutboxWriter outboxWriter;
+
     private PaymentService paymentService;
     private Order order;
     private Payment payment;
@@ -67,7 +80,8 @@ class PaymentServiceTest {
         paymentService = new PaymentService(paymentRepository, paymentEventRepository,
             orderRepository, catalogGateway, zarinpalClient,
             new ZarinpalProperties("m", "https://sandbox.zarinpal.com", "http://cb",
-                "http://shop/result", "http"));
+                "http://shop/result", "http"),
+            orderItemRepository, outboxWriter);
 
         order = new Order();
         order.setId(99L);
@@ -191,6 +205,36 @@ class PaymentServiceTest {
             assertThat(payment.getVerifiedAt()).isNotNull();
             assertThat(order.getPaidAt()).isNotNull();
             verify(catalogGateway).commitStock(99L);
+        }
+
+        @Test
+        @DisplayName("a paid order announces what sold")
+        void paidOrderPublishesWhatSold() {
+            when(zarinpalClient.verify(anyLong(), anyString())).thenReturn(verified(100));
+            OrderItem item = new OrderItem();
+            item.setProductId(7L);
+            item.setVariantId(70L);
+            item.setQuantity(3);
+            when(orderItemRepository.findByOrderIdOrderByIdAsc(99L)).thenReturn(List.of(item));
+
+            paymentService.settleCallback(AUTHORITY, "OK");
+
+            ArgumentCaptor<OrderPaidEvent> captor = ArgumentCaptor.forClass(OrderPaidEvent.class);
+            verify(outboxWriter).write(eq(Topics.ORDER_PAID), eq("99"), captor.capture());
+            assertThat(captor.getValue().lines())
+                .containsExactly(new OrderPaidEvent.Line(7L, 70L, 3));
+        }
+
+        @Test
+        @DisplayName("a failed payment announces nothing")
+        void failedPaymentPublishesNothing() {
+            // Popularity follows money. Publishing on the attempt would let anyone inflate a
+            // product's ranking by starting checkouts they never pay for.
+            when(zarinpalClient.verify(anyLong(), anyString())).thenReturn(verified(-51));
+
+            paymentService.settleCallback(AUTHORITY, "OK");
+
+            verify(outboxWriter, never()).write(anyString(), anyString(), any());
         }
 
         @Test

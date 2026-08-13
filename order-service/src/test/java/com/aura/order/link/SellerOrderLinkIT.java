@@ -14,6 +14,7 @@ import com.aura.order.order.CheckoutService;
 import com.aura.order.order.OrderRepository;
 import com.aura.order.order.OrderSource;
 import com.aura.order.order.PaymentStatus;
+import com.aura.order.outbox.OutboxWriter;
 import com.aura.order.payment.PaymentEventRepository;
 import com.aura.order.payment.PaymentRepository;
 import com.aura.order.payment.PaymentService;
@@ -65,7 +66,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({SellerOrderLinkService.class, CheckoutService.class, PaymentService.class,
     DeliveryMethodService.class, DiscountService.class, MockZarinpalClient.class,
-    SellerOrderLinkIT.Stubs.class})
+    OutboxWriter.class, SellerOrderLinkIT.Stubs.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class SellerOrderLinkIT {
 
@@ -84,6 +85,15 @@ class SellerOrderLinkIT {
         @Bean
         CatalogGateway catalogGateway() {
             return new StubCatalog();
+        }
+
+        /**
+         * {@code @DataJpaTest} does not bring Jackson, and the outbox needs it to serialise the
+         * event. The real one, not a stub: a serialisation failure here is a real defect.
+         */
+        @Bean
+        com.fasterxml.jackson.databind.ObjectMapper objectMapper() {
+            return new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules();
         }
 
         @Bean

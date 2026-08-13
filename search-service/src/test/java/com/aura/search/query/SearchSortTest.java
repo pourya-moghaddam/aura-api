@@ -50,7 +50,7 @@ class SearchSortTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = SearchSort.class, names = {"NEWEST", "CHEAPEST", "DEAREST", "BEST_SELLING"})
+    @EnumSource(value = SearchSort.class, names = {"NEWEST", "CHEAPEST", "DEAREST"})
     @DisplayName("a product missing the sort field sorts last rather than first")
     void missingValuesSortLast(SearchSort sort) {
         assertThat(sort.options().getFirst().field().missing().stringValue()).isEqualTo("_last");

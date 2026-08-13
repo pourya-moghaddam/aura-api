@@ -5,6 +5,7 @@ import com.aura.order.catalog.VariantSnapshot;
 import com.aura.order.order.Order;
 import com.aura.order.order.OrderRepository;
 import com.aura.order.order.PaymentStatus;
+import com.aura.order.outbox.OutboxWriter;
 import com.aura.order.payment.dto.PaymentStartResponse;
 import com.aura.order.payment.zarinpal.MockZarinpalClient;
 import com.aura.order.payment.zarinpal.ZarinpalClient;
@@ -55,7 +56,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Testcontainers
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({PaymentService.class, MockZarinpalClient.class, PaymentSettlementIT.Stubs.class})
+@Import({PaymentService.class, MockZarinpalClient.class, OutboxWriter.class,
+    PaymentSettlementIT.Stubs.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class PaymentSettlementIT {
 
@@ -69,6 +71,15 @@ class PaymentSettlementIT {
         @Bean
         CatalogGateway catalogGateway() {
             return new CountingCatalogGateway();
+        }
+
+        /**
+         * {@code @DataJpaTest} does not bring Jackson, and the outbox needs it to serialise the
+         * event. The real one, not a stub: a serialisation failure here is a real defect.
+         */
+        @Bean
+        com.fasterxml.jackson.databind.ObjectMapper objectMapper() {
+            return new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules();
         }
 
         @Bean
@@ -135,7 +146,7 @@ class PaymentSettlementIT {
     @BeforeEach
     void reset() {
         jdbcTemplate.execute("TRUNCATE payment_events, payments, discount_redemptions, "
-            + "order_items, seller_order_links, orders RESTART IDENTITY CASCADE");
+            + "order_items, seller_order_links, orders, outbox RESTART IDENTITY CASCADE");
         catalog().commits.set(0);
         catalog().releases.set(0);
     }
@@ -201,6 +212,54 @@ class PaymentSettlementIT {
         Payment payment = paymentRepository.findByAuthority(authority).orElseThrow();
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
         assertThat(payment.getRefId()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("what sold is written to the outbox in the same transaction as the payment")
+    void paymentPublishesWhatSold() {
+        Order order = order();
+        addItem(order.getId(), 7L, 70L, 3);
+        String authority = startPayment(order);
+
+        transactionTemplate.executeWithoutResult(status ->
+            paymentService.settleCallback(authority, "OK"));
+
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+            "SELECT topic, partition_key, payload FROM outbox WHERE topic = ?",
+            "aura.order.paid.v1");
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.getFirst().get("partition_key")).isEqualTo(String.valueOf(order.getId()));
+        // Postgres reformats jsonb on the way out, so match on the values rather than the layout.
+        assertThat(rows.getFirst().get("payload").toString())
+            .contains("\"productId\": 7", "\"variantId\": 70", "\"quantity\": 3");
+    }
+
+    @Test
+    @DisplayName("a cancelled payment publishes nothing")
+    void cancelledPaymentPublishesNothing() {
+        // The event drives popularity. If it were written on the attempt rather than on the money,
+        // an abandoned basket would count as a sale and anyone could rank their own products.
+        Order order = order();
+        addItem(order.getId(), 7L, 70L, 3);
+        String authority = startPayment(order);
+
+        transactionTemplate.executeWithoutResult(status ->
+            paymentService.settleCallback(authority, "NOK"));
+
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT count(*) FROM outbox WHERE topic = ?", Integer.class, "aura.order.paid.v1"))
+            .isZero();
+    }
+
+    private void addItem(long orderId, long productId, long variantId, int quantity) {
+        jdbcTemplate.update("""
+            INSERT INTO order_items (order_id, product_id, variant_id, seller_id,
+                                     product_name_snapshot, variant_snapshot,
+                                     unit_price, quantity, line_total)
+            VALUES (?, ?, ?, ?, ?, '{}'::jsonb, ?, ?, ?)
+            """, orderId, productId, variantId, 9L, "پیراهن",
+            100_000L, quantity, 100_000L * quantity);
     }
 
     @Test

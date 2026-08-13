@@ -7,9 +7,17 @@ spring:
 
   cloud:
     function:
-      definition: productChanged
+      definition: productChanged;orderPaid
     stream:
       bindings:
+        orderPaid-in-0:
+          destination: ${aura.kafka.topics.order-paid:aura.order.paid.v1}
+          # Its own group, so a poisoned sales message cannot stall product indexing, or the other
+          # way round. The two consumers have nothing to say to each other.
+          group: search-trending
+          consumer:
+            max-attempts: 3
+            back-off-initial-interval: 1000
         productChanged-in-0:
           destination: ${aura.kafka.topics.product-changed:aura.catalog.product-changed.v1}
           group: search-indexer
@@ -25,6 +33,10 @@ spring:
             consumer:
               enable-dlq: true
               dlq-name: ${aura.kafka.topics.product-changed:aura.catalog.product-changed.v1}.dlq
+          orderPaid-in-0:
+            consumer:
+              enable-dlq: true
+              dlq-name: ${aura.kafka.topics.order-paid:aura.order.paid.v1}.dlq
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}

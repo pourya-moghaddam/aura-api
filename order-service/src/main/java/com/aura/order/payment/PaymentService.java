@@ -3,7 +3,11 @@ package com.aura.order.payment;
 import com.aura.common.web.error.BusinessRuleException;
 import com.aura.common.web.error.ResourceNotFoundException;
 import com.aura.order.catalog.CatalogGateway;
+import com.aura.common.events.OrderPaidEvent;
+import com.aura.common.events.Topics;
 import com.aura.order.order.Order;
+import com.aura.order.order.OrderItemRepository;
+import com.aura.order.outbox.OutboxWriter;
 import com.aura.order.order.OrderRepository;
 import com.aura.order.order.PaymentStatus;
 import com.aura.order.order.TraceCodes;
@@ -17,7 +21,9 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.UUID;
 import java.util.List;
 import java.util.Optional;
 
@@ -50,6 +56,8 @@ public class PaymentService {
     private final CatalogGateway catalogGateway;
     private final ZarinpalClient zarinpalClient;
     private final ZarinpalProperties zarinpalProperties;
+    private final OrderItemRepository orderItemRepository;
+    private final OutboxWriter outboxWriter;
 
     /**
      * Starts a payment attempt and returns where to send the shopper.
@@ -171,6 +179,12 @@ public class PaymentService {
         order.touch();
         orderRepository.save(order);
 
+        // What sold, for the read model. Written to the outbox inside this transaction, so a
+        // payment that is recorded is always accompanied by the event describing it - and one that
+        // rolls back takes the event with it rather than inflating a product's popularity for a
+        // sale that never happened.
+        outboxWriter.write(Topics.ORDER_PAID, String.valueOf(order.getId()), paidEvent(order));
+
         // The held units leave stock for good. Best-effort by design: catalog's own reconciliation
         // is the backstop, and failing the callback here would tell a customer their successful
         // payment failed.
@@ -283,6 +297,17 @@ public class PaymentService {
      */
     public String resultUrlPending(String authority) {
         return zarinpalProperties.resultUrl() + "?status=PENDING&authority=" + authority;
+    }
+
+    private OrderPaidEvent paidEvent(Order order) {
+        List<OrderPaidEvent.Line> lines = orderItemRepository
+            .findByOrderIdOrderByIdAsc(order.getId()).stream()
+            .map(item -> new OrderPaidEvent.Line(
+                item.getProductId(), item.getVariantId(), item.getQuantity()))
+            .toList();
+
+        return new OrderPaidEvent(UUID.randomUUID(), Instant.now(),
+            order.getId(), order.getTraceCode(), lines);
     }
 
     private void record(Payment payment, String type, String raw) {

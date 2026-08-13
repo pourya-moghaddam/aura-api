@@ -8,6 +8,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+
+import com.aura.common.events.Topics;
 
 /**
  * Drains the outbox to Kafka.
@@ -25,7 +28,14 @@ import java.util.List;
 @RequiredArgsConstructor
 public class OutboxPublisher {
 
-    private static final String BINDING = "orderItemStatusChangedOut-out-0";
+    /**
+     * Topic to binding. A single hard-coded binding was fine with one event type and becomes a
+     * silent misroute the moment there are two — every event would go to whichever destination the
+     * one binding names, and the consumers of the other topic would simply never hear anything.
+     */
+    private static final Map<String, String> BINDINGS = Map.of(
+        Topics.ORDER_ITEM_STATUS_CHANGED, "orderItemStatusChangedOut-out-0",
+        Topics.ORDER_PAID, "orderPaidOut-out-0");
 
     /** Kafka's own header for the partition key, honoured by the binder. */
     private static final String PARTITION_KEY_HEADER = "partitionKey";
@@ -53,7 +63,7 @@ public class OutboxPublisher {
                 // serialised JSON; handing the binder a String makes it serialise that string
                 // again, so consumers receive a quoted, escaped blob instead of an object. It
                 // costs nothing to get right and is invisible until something tries to read it.
-                streamBridge.send(BINDING, MessageBuilder
+                streamBridge.send(bindingFor(entry.getTopic()), MessageBuilder
                     .withPayload(entry.getPayload().getBytes(java.nio.charset.StandardCharsets.UTF_8))
                     .setHeader(org.springframework.messaging.MessageHeaders.CONTENT_TYPE,
                         org.springframework.util.MimeTypeUtils.APPLICATION_JSON)
@@ -73,6 +83,18 @@ public class OutboxPublisher {
 
         outboxRepository.saveAll(pending);
         return published;
+    }
+
+    /**
+     * Refuses to guess. An unrouted topic would otherwise be published to nowhere, or worse to the
+     * wrong place, and the outbox row would be marked sent either way.
+     */
+    private String bindingFor(String topic) {
+        String binding = BINDINGS.get(topic);
+        if (binding == null) {
+            throw new IllegalStateException("No binding configured for topic " + topic);
+        }
+        return binding;
     }
 
     @Transactional

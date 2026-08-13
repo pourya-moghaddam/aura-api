@@ -45,23 +45,15 @@ public enum SearchSort {
         public List<SortOptions> options() {
             return List.of(field("maxPrice", SortOrder.Desc), byId());
         }
-    },
-
-    /**
-     * Best-selling.
-     *
-     * <p><strong>Inert until something feeds it.</strong> {@code salesCount} is mapped and sorted
-     * on, but nothing writes it — sales live in order-service and no event carries them here yet.
-     * Until that feed exists this orders by the tie-breaker alone, which is stable and honest but
-     * is not popularity. Left in place rather than hidden so the gap is visible in the code that
-     * would have to change.
-     */
-    BEST_SELLING {
-        @Override
-        public List<SortOptions> options() {
-            return List.of(field("salesCount", SortOrder.Desc), byId());
-        }
     };
+
+    // There is deliberately no BEST_SELLING here. Sorting by popularity needs a sales figure inside
+    // each document, and the indexer replaces documents wholesale under an external version — a
+    // count written by anything else is erased by the next product edit, and preserving it would
+    // mean scripted updates, which cannot carry an external version and so give up the ordering
+    // guarantee that stops a stale event overwriting fresh data. Sales counts therefore live in
+    // Redis, and "what is selling" is answered by the trending endpoint instead of by a sort option
+    // that would quietly return an arbitrary order.
 
     public abstract List<SortOptions> options();
 
