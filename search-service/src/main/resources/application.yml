@@ -6,6 +6,8 @@ spring:
     name: search-service
 
   cloud:
+    function:
+      definition: productChanged
     stream:
       bindings:
         productChanged-in-0:

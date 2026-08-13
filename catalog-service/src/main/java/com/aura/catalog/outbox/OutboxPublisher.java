@@ -51,8 +51,14 @@ public class OutboxPublisher {
         int published = 0;
         for (OutboxEntry entry : pending) {
             try {
+                // Bytes with an explicit content type, not a String. The payload is already
+                // serialised JSON; handing the binder a String makes it serialise that string
+                // again, so consumers receive a quoted, escaped blob instead of an object. It
+                // costs nothing to get right and is invisible until something tries to read it.
                 streamBridge.send(BINDING, MessageBuilder
-                    .withPayload(entry.getPayload())
+                    .withPayload(entry.getPayload().getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                    .setHeader(org.springframework.messaging.MessageHeaders.CONTENT_TYPE,
+                        org.springframework.util.MimeTypeUtils.APPLICATION_JSON)
                     .setHeader(PARTITION_KEY_HEADER, entry.getPartitionKey())
                     .setHeader("eventId", entry.getEventId().toString())
                     .build());

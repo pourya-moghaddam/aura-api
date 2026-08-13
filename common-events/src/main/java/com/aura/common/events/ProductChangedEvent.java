@@ -31,6 +31,12 @@ public record ProductChangedEvent(
     Long categoryId,
     /** Ancestor ids, root first. Lets search answer "everything under Clothing" without the tree. */
     List<Long> categoryPath,
+    /**
+     * The same ancestors as names, root first. Sent so search can match a query against the
+     * category a product sits in — "کیف چرم" should find a leather bag filed under Bags — without
+     * holding a copy of the tree or calling back per document.
+     */
+    List<String> categoryNames,
     String name,
     String slug,
     String description,

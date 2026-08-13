@@ -62,6 +62,7 @@ public class ProductEventPublisher {
     private void publish(Product product, boolean deleted) {
         List<ProductVariant> variants =
             productVariantRepository.findByProductIdOrderByIdAsc(product.getId());
+        List<Long> path = categoryPathOf(product.getCategoryId());
 
         ProductChangedEvent event = new ProductChangedEvent(
             UUID.randomUUID(),
@@ -69,7 +70,8 @@ public class ProductEventPublisher {
             product.getId(),
             product.getSellerId(),
             product.getCategoryId(),
-            categoryPathOf(product.getCategoryId()),
+            path,
+            categoryNamesOf(path),
             product.getName(),
             product.getSlug(),
             product.getDescription(),
@@ -99,6 +101,23 @@ public class ProductEventPublisher {
             .map(Category::getPath)
             .map(path -> Arrays.stream(path.split("\\.")).map(Long::valueOf).toList())
             .orElse(List.of());
+    }
+
+    /**
+     * The same ancestors as names, in the same order.
+     *
+     * <p>Resolved from the ids already in hand rather than by a second traversal, and reordered to
+     * match the path — {@code findAllById} makes no promise about order, and a category list that
+     * reads "Shirts, Clothing" instead of "Clothing, Shirts" would be shown to shoppers that way.
+     */
+    private List<String> categoryNamesOf(List<Long> path) {
+        if (path.isEmpty()) {
+            return List.of();
+        }
+        java.util.Map<Long, String> names = categoryRepository.findAllById(path).stream()
+            .collect(java.util.stream.Collectors.toMap(Category::getId, Category::getName));
+
+        return path.stream().map(names::get).filter(java.util.Objects::nonNull).toList();
     }
 
     /** Names, not ids: the facet sidebar shows them, and search should not have to resolve them. */
