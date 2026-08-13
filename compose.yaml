@@ -280,6 +280,34 @@ services:
       retries: 12
       start_period: 40s
 
+  search-service:
+    <<: *service-defaults
+    build:
+      context: .
+      args:
+        SERVICE: search-service
+    image: aura/search-service:${TAG:-dev}
+    environment:
+      <<: *app-env
+      ELASTICSEARCH_URI: http://elasticsearch:9200
+      # Creates products_v1 behind the alias on a cold cluster. Something to reconsider in
+      # production, where index creation is usually a deliberate act rather than a deploy side
+      # effect.
+      AURA_SEARCH_INDEX_BOOTSTRAP: ${AURA_SEARCH_INDEX_BOOTSTRAP:-true}
+    ports:
+      - "8085:8085"
+    depends_on:
+      elasticsearch: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      discovery-service: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8085/actuator/health/readiness || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
   notification-service:
     <<: *service-defaults
     build:

@@ -55,6 +55,7 @@
         <module>catalog-service</module>
         <module>order-service</module>
         <module>media-service</module>
+        <module>search-service</module>
         <module>discovery-service</module>
         <module>gateway-service</module>
     </modules>

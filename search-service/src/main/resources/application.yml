@@ -1,0 +1,69 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: search-service
+
+  cloud:
+    stream:
+      bindings:
+        productChanged-in-0:
+          destination: ${aura.kafka.topics.product-changed:aura.catalog.product-changed.v1}
+          group: search-indexer
+          consumer:
+            # At-least-once with a bounded retry, then the message goes to the DLQ rather than
+            # blocking every product behind it. The index can always be rebuilt from catalog, so a
+            # single stuck document must never stop the stream.
+            max-attempts: 3
+            back-off-initial-interval: 1000
+      kafka:
+        bindings:
+          productChanged-in-0:
+            consumer:
+              enable-dlq: true
+              dlq-name: ${aura.kafka.topics.product-changed:aura.catalog.product-changed.v1}.dlq
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+aura:
+  search:
+    uri: ${ELASTICSEARCH_URI:http://localhost:9200}
+    # Everything reads and writes through the alias, never an index name. That indirection is what
+    # makes a mapping change a reindex-and-flip rather than downtime.
+    alias: ${AURA_SEARCH_ALIAS:products}
+    index-bootstrap: ${AURA_SEARCH_INDEX_BOOTSTRAP:true}
+
+  security:
+    jwt:
+      jwk-set-uri: ${AURA_JWKS_URI:http://localhost:8081/api/auth/.well-known/jwks.json}
+      issuer: ${AURA_TOKEN_ISSUER:http://localhost:8081}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+
+logging:
+  level:
+    root: INFO
+    com.aura: DEBUG

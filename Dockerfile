@@ -43,6 +43,7 @@ COPY auth-service/pom.xml auth-service/
 COPY catalog-service/pom.xml catalog-service/
 COPY order-service/pom.xml order-service/
 COPY media-service/pom.xml media-service/
+COPY search-service/pom.xml search-service/
 COPY notification-service/pom.xml notification-service/
 COPY discovery-service/pom.xml discovery-service/
 COPY gateway-service/pom.xml gateway-service/
