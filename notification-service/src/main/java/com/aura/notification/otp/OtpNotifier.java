@@ -31,6 +31,8 @@ public class OtpNotifier {
         log.debug("OTP requested for {} [{}]", event.purpose(), event.eventId());
 
         dispatcher.sendTemplate(
+            // One event, one code, one message: the event id is exactly what "already sent" means.
+            event.eventId().toString(),
             event.eventId(),
             NotificationKind.OTP,
             event.phone(),

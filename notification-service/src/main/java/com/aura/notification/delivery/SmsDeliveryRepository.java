@@ -7,5 +7,7 @@ import java.util.UUID;
 
 public interface SmsDeliveryRepository extends JpaRepository<SmsDelivery, Long> {
 
+    Optional<SmsDelivery> findByDedupeKey(String dedupeKey);
+
     Optional<SmsDelivery> findByEventId(UUID eventId);
 }

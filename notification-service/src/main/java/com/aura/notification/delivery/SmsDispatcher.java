@@ -29,18 +29,19 @@ public class SmsDispatcher {
     private final SmsGateway gateway;
 
     /** A one-time code, through the provider's template. */
-    public void sendTemplate(UUID eventId, NotificationKind kind, String phone,
+    public void sendTemplate(String dedupeKey, UUID eventId, NotificationKind kind, String phone,
                              int templateId, Map<String, String> parameters) {
-        dispatch(eventId, kind, phone, templateId, null,
+        dispatch(dedupeKey, eventId, kind, phone, templateId, null,
             () -> gateway.sendTemplate(phone, templateId, parameters));
     }
 
     /** Anything that is not a one-time code. */
-    public void sendText(UUID eventId, NotificationKind kind, String phone, String body) {
-        dispatch(eventId, kind, phone, null, body, () -> gateway.sendText(phone, body));
+    public void sendText(String dedupeKey, UUID eventId, NotificationKind kind, String phone,
+                         String body) {
+        dispatch(dedupeKey, eventId, kind, phone, null, body, () -> gateway.sendText(phone, body));
     }
 
-    private void dispatch(UUID eventId, NotificationKind kind, String phone,
+    private void dispatch(String dedupeKey, UUID eventId, NotificationKind kind, String phone,
                           Integer templateId, String body, Send send) {
         if (phone == null || phone.isBlank()) {
             // Nowhere to send it. Guest orders carry a phone, but a malformed event should not
@@ -49,7 +50,7 @@ public class SmsDispatcher {
             return;
         }
 
-        Optional<SmsDelivery> claimed = deliveryLog.claim(eventId, kind, phone);
+        Optional<SmsDelivery> claimed = deliveryLog.claim(dedupeKey, eventId, kind, phone);
         if (claimed.isEmpty()) {
             return;
         }

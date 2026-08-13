@@ -29,9 +29,17 @@ spring:
 
   cloud:
     function:
-      definition: otpRequestedIn
+      definition: otpRequestedIn;orderItemStatusChanged
     stream:
       bindings:
+        orderItemStatusChanged-in-0:
+          destination: ${aura.kafka.topics.order-item-status-changed:aura.order.item-status-changed.v1}
+          # Its own group, so a poisoned status message cannot stall login codes behind it. An OTP
+          # is the one message where a delay is the same as a failure.
+          group: notification-order-status
+          consumer:
+            max-attempts: 3
+            back-off-initial-interval: 1000
         otpRequestedIn-in-0:
           destination: ${aura.kafka.topics.otp-requested}
           group: notification-group
@@ -48,6 +56,10 @@ spring:
               # partition. Nothing else can make progress behind a poison message otherwise.
               enable-dlq: true
               dlq-name: aura.auth.otp-requested.v1.DLT
+          orderItemStatusChanged-in-0:
+            consumer:
+              enable-dlq: true
+              dlq-name: aura.order.item-status-changed.v1.DLT
 
 eureka:
   client:
@@ -86,6 +98,7 @@ aura:
     topics:
       # Must match auth-service's producer binding; see com.aura.common.events.Topics.
       otp-requested: ${KAFKA_TOPIC_OTP_REQUESTED:aura.auth.otp-requested.v1}
+      order-item-status-changed: ${KAFKA_TOPIC_ORDER_ITEM_STATUS_CHANGED:aura.order.item-status-changed.v1}
 
 logging:
   level:

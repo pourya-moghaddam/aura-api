@@ -52,25 +52,30 @@ public class DeliveryLog {
      * same one fails at commit with an unrelated-looking error. The insert has to be finished with
      * before the lookup starts.
      *
-     * @return the row to send against, or empty when this event has already been settled
+     * @param dedupeKey what "already sent" means for this message — usually the event id, but the
+     *                  order id for a message about an order rather than about one of its items
+     * @return the row to send against, or empty when this key has already been settled
      */
-    public Optional<SmsDelivery> claim(UUID eventId, NotificationKind kind, String phone) {
+    public Optional<SmsDelivery> claim(String dedupeKey, UUID eventId, NotificationKind kind,
+                                       String phone) {
         try {
             return Optional.ofNullable(transactionTemplate.execute(status ->
-                repository.saveAndFlush(SmsDelivery.claimed(eventId, kind, phone))));
+                repository.saveAndFlush(
+                    SmsDelivery.claimed(dedupeKey, eventId, kind, phone))));
 
         } catch (DataIntegrityViolationException e) {
-            // Someone got here first. Whether that is a redelivery or a parallel consumer, the
-            // answer is the same: do not send a second message.
+            // Someone got here first. Whether that is a redelivery, a parallel consumer, or a
+            // second item from an order that has just been delivered, the answer is the same: do
+            // not send a second message.
             SmsDelivery existing = transactionTemplate.execute(status ->
-                repository.findByEventId(eventId).orElse(null));
+                repository.findByDedupeKey(dedupeKey).orElse(null));
 
             if (existing == null) {
                 throw new IllegalStateException(
-                    "Delivery " + eventId + " both exists and does not", e);
+                    "Delivery " + dedupeKey + " both exists and does not", e);
             }
             if (existing.isSettled()) {
-                log.debug("Ignoring a repeat of {} - already {}", eventId, existing.getStatus());
+                log.debug("Ignoring a repeat of {} - already {}", dedupeKey, existing.getStatus());
                 return Optional.empty();
             }
 

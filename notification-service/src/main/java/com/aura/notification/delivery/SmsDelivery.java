@@ -34,7 +34,17 @@ public class SmsDelivery {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "event_id", nullable = false, unique = true)
+    /**
+     * What decides whether to send.
+     *
+     * <p>Usually the event id, but not always: one delivered order raises an event per item, and
+     * the shopper should hear about the parcel once. See V2__dedupe_key.sql.
+     */
+    @Column(name = "dedupe_key", nullable = false, unique = true, length = 120)
+    private String dedupeKey;
+
+    /** What caused it. The thread back to a log line and a Kafka offset. */
+    @Column(name = "event_id", nullable = false)
     private UUID eventId;
 
     @Enumerated(EnumType.STRING)
@@ -75,8 +85,10 @@ public class SmsDelivery {
     @Column(name = "sent_at")
     private OffsetDateTime sentAt;
 
-    public static SmsDelivery claimed(UUID eventId, NotificationKind kind, String phone) {
+    public static SmsDelivery claimed(String dedupeKey, UUID eventId, NotificationKind kind,
+                                      String phone) {
         SmsDelivery delivery = new SmsDelivery();
+        delivery.dedupeKey = dedupeKey;
         delivery.eventId = eventId;
         delivery.kind = kind;
         delivery.phone = phone;

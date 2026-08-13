@@ -68,10 +68,10 @@ class DeliveryLogIT {
     void aSettledEventIsNotClaimedTwice() {
         UUID event = UUID.randomUUID();
 
-        SmsDelivery first = deliveryLog.claim(event, NotificationKind.OTP, PHONE).orElseThrow();
+        SmsDelivery first = deliveryLog.claim(event.toString(), event, NotificationKind.OTP, PHONE).orElseThrow();
         deliveryLog.recordSent(first.getId(), new SmsReceipt("p-1", BigDecimal.ONE), 42, null);
 
-        assertThat(deliveryLog.claim(event, NotificationKind.OTP, PHONE)).isEmpty();
+        assertThat(deliveryLog.claim(event.toString(), event, NotificationKind.OTP, PHONE)).isEmpty();
         assertThat(repository.count()).isEqualTo(1);
     }
 
@@ -83,9 +83,9 @@ class DeliveryLogIT {
         // message about an unexpected rollback rather than about the duplicate. It compiles, it
         // passes against a mock, and it fails the first time two messages arrive for one event.
         UUID event = UUID.randomUUID();
-        deliveryLog.claim(event, NotificationKind.OTP, PHONE).orElseThrow();
+        deliveryLog.claim(event.toString(), event, NotificationKind.OTP, PHONE).orElseThrow();
 
-        Optional<SmsDelivery> second = deliveryLog.claim(event, NotificationKind.OTP, PHONE);
+        Optional<SmsDelivery> second = deliveryLog.claim(event.toString(), event, NotificationKind.OTP, PHONE);
 
         // Still PENDING, so the second claim gets the row rather than being refused - a message
         // whose first attempt died mid-flight must still go out.
@@ -97,10 +97,10 @@ class DeliveryLogIT {
     @DisplayName("a permanently failed event is never attempted again")
     void failedEventsAreNotRetried() {
         UUID event = UUID.randomUUID();
-        SmsDelivery claim = deliveryLog.claim(event, NotificationKind.OTP, PHONE).orElseThrow();
+        SmsDelivery claim = deliveryLog.claim(event.toString(), event, NotificationKind.OTP, PHONE).orElseThrow();
         deliveryLog.recordFailed(claim.getId(), "sms.ir status=-1 message=bad template");
 
-        assertThat(deliveryLog.claim(event, NotificationKind.OTP, PHONE)).isEmpty();
+        assertThat(deliveryLog.claim(event.toString(), event, NotificationKind.OTP, PHONE)).isEmpty();
     }
 
     @Test
@@ -111,8 +111,8 @@ class DeliveryLogIT {
         UUID event = UUID.randomUUID();
 
         List<Optional<SmsDelivery>> results = inParallel(List.of(
-            () -> deliveryLog.claim(event, NotificationKind.OTP, PHONE),
-            () -> deliveryLog.claim(event, NotificationKind.OTP, PHONE)));
+            () -> deliveryLog.claim(event.toString(), event, NotificationKind.OTP, PHONE),
+            () -> deliveryLog.claim(event.toString(), event, NotificationKind.OTP, PHONE)));
 
         assertThat(repository.count()).isEqualTo(1);
         assertThat(results).allMatch(Optional::isPresent);
@@ -124,27 +124,27 @@ class DeliveryLogIT {
     @DisplayName("a retryable failure leaves the row claimable and counts the attempt")
     void attemptsAccumulate() {
         UUID event = UUID.randomUUID();
-        SmsDelivery claim = deliveryLog.claim(event, NotificationKind.OTP, PHONE).orElseThrow();
+        SmsDelivery claim = deliveryLog.claim(event.toString(), event, NotificationKind.OTP, PHONE).orElseThrow();
 
         deliveryLog.recordAttempt(claim.getId(), "connection reset");
         deliveryLog.recordAttempt(claim.getId(), "connection reset");
 
-        SmsDelivery reloaded = repository.findByEventId(event).orElseThrow();
+        SmsDelivery reloaded = repository.findByDedupeKey(event.toString()).orElseThrow();
         assertThat(reloaded.getAttempts()).isEqualTo(2);
         assertThat(reloaded.getStatus()).isEqualTo(DeliveryStatus.PENDING);
         // A row that reads SENT after three attempts is a different operational story from one
         // that worked first time, and the counter is the only place that difference survives.
-        assertThat(deliveryLog.claim(event, NotificationKind.OTP, PHONE)).isPresent();
+        assertThat(deliveryLog.claim(event.toString(), event, NotificationKind.OTP, PHONE)).isPresent();
     }
 
     @Test
     @DisplayName("the one-time code is nowhere in the row")
     void theCodeIsNeverStored() {
         UUID event = UUID.randomUUID();
-        SmsDelivery claim = deliveryLog.claim(event, NotificationKind.OTP, PHONE).orElseThrow();
+        SmsDelivery claim = deliveryLog.claim(event.toString(), event, NotificationKind.OTP, PHONE).orElseThrow();
         deliveryLog.recordSent(claim.getId(), new SmsReceipt("p-2", BigDecimal.ZERO), 42, null);
 
-        SmsDelivery reloaded = repository.findByEventId(event).orElseThrow();
+        SmsDelivery reloaded = repository.findByDedupeKey(event.toString()).orElseThrow();
         // A code written to a table outlives its validity window, and a database dump then holds
         // working credentials. Only the template id is kept.
         assertThat(reloaded.getBody()).isNull();
