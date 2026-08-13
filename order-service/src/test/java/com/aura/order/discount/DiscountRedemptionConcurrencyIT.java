@@ -246,7 +246,7 @@ class DiscountRedemptionConcurrencyIT {
         long orderId = order(3L);
 
         long amount = transactionTemplate.execute(status ->
-            discountService.redeem("SAVE10", 100_000L, 3L, orderId));
+            discountService.redeem("SAVE10", 100_000L, 3L, orderId)).amount();
 
         DiscountRedemption redemption = discountRedemptionRepository.findByOrderId(orderId)
             .orElseThrow();

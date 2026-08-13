@@ -45,7 +45,7 @@ public class SecurityConfig {
                 // for someone with no account and no token.
                 .requestMatchers("/api/orders/cart/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/orders/delivery-methods").permitAll()
-                .requestMatchers("/api/orders/checkout/**").permitAll()
+                .requestMatchers("/api/orders/checkout", "/api/orders/checkout/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/orders/discounts/quote").permitAll()
                 .requestMatchers("/api/orders/payments/callback/**").permitAll()
                 // Looking an order up by its trace code is how a guest checks on it afterwards -

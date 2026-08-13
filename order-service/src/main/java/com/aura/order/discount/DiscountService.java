@@ -79,7 +79,7 @@ public class DiscountService {
      * serialised: the second blocks, then sees the incremented counter and is refused.
      */
     @Transactional(propagation = Propagation.MANDATORY)
-    public long redeem(String code, long subtotal, Long userId, long orderId) {
+    public Redemption redeem(String code, long subtotal, Long userId, long orderId) {
         DiscountCode discount = discountCodeRepository.lockByCode(normalise(code))
             .orElseThrow(() -> new BusinessRuleException(
                 DiscountRejection.NOT_FOUND.code(), DiscountRejection.NOT_FOUND.message()));
@@ -98,7 +98,17 @@ public class DiscountService {
         log.info("Redeemed discount {} on order {} for {} Rial ({} of {} uses spent)",
             discount.getCode(), orderId, amount, discount.getTimesUsed(), discount.getUsageLimit());
 
-        return amount;
+        return new Redemption(discount.getId(), discount.getCode(), amount);
+    }
+
+    /**
+     * What an order needs to record about the discount it was given: the id for the foreign key,
+     * the code as stored for display, and the amount actually taken off.
+     *
+     * <p>Returned together so the caller does not have to look the code up a second time — a
+     * second read outside the lock could see a row an admin had renamed in between.
+     */
+    public record Redemption(Long discountCodeId, String code, long amount) {
     }
 
     /**

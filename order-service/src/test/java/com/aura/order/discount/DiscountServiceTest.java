@@ -244,9 +244,13 @@ class DiscountServiceTest {
         void recordsTheRedemption() {
             when(discountCodeRepository.lockByCode("SUMMER")).thenReturn(Optional.of(discount));
 
-            long amount = discountService.redeem("SUMMER", 1_000_000L, 7L, 42L);
+            DiscountService.Redemption redemption =
+                discountService.redeem("SUMMER", 1_000_000L, 7L, 42L);
 
-            assertThat(amount).isEqualTo(100_000L);
+            assertThat(redemption.amount()).isEqualTo(100_000L);
+            assertThat(redemption.discountCodeId()).isEqualTo(1L);
+            // The code as stored, not as typed: it is what the order will display.
+            assertThat(redemption.code()).isEqualTo("SUMMER");
             assertThat(discount.getTimesUsed()).isEqualTo(1);
 
             ArgumentCaptor<DiscountRedemption> saved =
