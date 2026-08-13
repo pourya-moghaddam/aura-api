@@ -6,6 +6,8 @@ import com.aura.auth.user.User;
 import com.aura.auth.user.UserRepository;
 import com.aura.common.phone.IranianPhoneNumber;
 import com.aura.common.security.Roles;
+
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
@@ -69,15 +71,22 @@ public class SuperAdminBootstrapRunner implements ApplicationRunner {
 
     private void createSuperAdmin() {
         String phone = IranianPhoneNumber.normalize(superAdminProperties.phone());
-        Role superAdminRole = roleRepository.findByName(Roles.SUPER_ADMIN)
-            .orElseThrow(() -> new IllegalStateException(
-                "Role 'SUPER_ADMIN' not found - has the V1 migration run?"));
+
+        // Through the same baseline rule every other account goes through, so this one is not the
+        // single exception to "every account has USER". Without it the super admin cannot sign in
+        // to the storefront at all - which makes the one account guaranteed to exist useless for
+        // exercising the buy path.
+        Set<Role> roles = Roles.withBaseline(Set.of(Roles.SUPER_ADMIN)).stream()
+            .map(name -> roleRepository.findByName(name)
+                .orElseThrow(() -> new IllegalStateException(
+                    "Role '" + name + "' not found - has the V1 migration run?")))
+            .collect(java.util.stream.Collectors.toSet());
 
         User user = new User();
         user.setPhone(phone);
         user.setPassword(passwordEncoder.encode(superAdminProperties.password()));
         user.setIsActive(true);
-        user.getRoles().add(superAdminRole);
+        user.getRoles().addAll(roles);
         userRepository.save(user);
 
         log.info("Created the bootstrap super admin for phone {}. Sign in via the control panel "

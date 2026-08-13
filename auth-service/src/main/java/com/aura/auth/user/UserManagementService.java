@@ -67,7 +67,7 @@ public class UserManagementService {
         User user = new User();
         user.setPhone(phone);
         user.setIsActive(true);
-        user.getRoles().addAll(resolveRoles(unionWithUser(request.roles())));
+        user.getRoles().addAll(resolveRoles(Roles.withBaseline(request.roles())));
 
         return toProfileResponse(userRepository.save(user));
     }
@@ -75,7 +75,7 @@ public class UserManagementService {
     @Transactional
     public UserProfileResponse updateRoles(long userId, UpdateUserRolesRequest request) {
         User user = requireUser(userId);
-        Set<String> requestedRoleNames = unionWithUser(request.roles());
+        Set<String> requestedRoleNames = Roles.withBaseline(request.roles());
 
         guardAgainstStrippingTheLastSuperAdmin(user, requestedRoleNames);
 
@@ -117,12 +117,6 @@ public class UserManagementService {
         if (losingSuperAdmin && userRepository.countByRoles_Name(Roles.SUPER_ADMIN) <= 1) {
             throw new LastSuperAdminException();
         }
-    }
-
-    private Set<String> unionWithUser(Set<String> roleNames) {
-        Set<String> union = new HashSet<>(roleNames);
-        union.add(Roles.USER);
-        return union;
     }
 
     private Set<Role> resolveRoles(Set<String> roleNames) {

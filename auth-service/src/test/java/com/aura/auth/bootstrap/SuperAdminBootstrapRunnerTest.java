@@ -95,7 +95,9 @@ class SuperAdminBootstrapRunnerTest {
     void createsAnActiveSuperAdminWithAnEncodedPassword() {
         when(userRepository.existsByRoles_Name(Roles.SUPER_ADMIN)).thenReturn(false);
         Role superAdminRole = new Role(1L, Roles.SUPER_ADMIN, "Full control");
+        Role userRole = new Role(2L, Roles.USER, "Baseline");
         when(roleRepository.findByName(Roles.SUPER_ADMIN)).thenReturn(Optional.of(superAdminRole));
+        when(roleRepository.findByName(Roles.USER)).thenReturn(Optional.of(userRole));
         when(passwordEncoder.encode("a-strong-password-1234")).thenReturn("encoded-hash");
         SuperAdminBootstrapRunner runner = runner(
             new SuperAdminProperties("09120000000", "a-strong-password-1234"));
@@ -111,7 +113,10 @@ class SuperAdminBootstrapRunnerTest {
         assertThat(created.getPhone()).isEqualTo("+989120000000");
         assertThat(created.getPassword()).isEqualTo("encoded-hash");
         assertThat(created.getIsActive()).isTrue();
-        assertThat(created.getRoles()).containsExactly(superAdminRole);
+        // USER as well as SUPER_ADMIN, through the same baseline rule every other account uses.
+        // Without it this is the one account in the system that cannot sign in to the storefront,
+        // and the single exception to "every account has USER" for anything that assumes it.
+        assertThat(created.getRoles()).containsExactlyInAnyOrder(superAdminRole, userRole);
     }
 
     @Test
@@ -119,6 +124,8 @@ class SuperAdminBootstrapRunnerTest {
         when(userRepository.existsByRoles_Name(Roles.SUPER_ADMIN)).thenReturn(false);
         when(roleRepository.findByName(Roles.SUPER_ADMIN))
             .thenReturn(Optional.of(new Role(1L, Roles.SUPER_ADMIN, "Full control")));
+        when(roleRepository.findByName(Roles.USER))
+            .thenReturn(Optional.of(new Role(2L, Roles.USER, "Baseline")));
         when(passwordEncoder.encode(any())).thenReturn("encoded-hash");
         SuperAdminBootstrapRunner runner = runner(
             new SuperAdminProperties("+989000000000", "a-strong-password-1234"));
