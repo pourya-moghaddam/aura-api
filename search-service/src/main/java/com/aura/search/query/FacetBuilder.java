@@ -54,8 +54,17 @@ public class FacetBuilder {
         Map<String, Aggregation> aggregations = new LinkedHashMap<>();
 
         for (Facet facet : Facet.all()) {
-            aggregations.put(facet.responseKey(),
-                filtered(filterBuilder.selections(request, facet), terms(facet.field())));
+            // Category is navigation, not a facet, and is the one exception to the exclusion rule.
+            // Excluding its own filter would show every category in the shop on a category page -
+            // a shopper drilling into Clothing wants what is inside it, not a list of everything
+            // else. Applying it makes the buckets the browsed subtree's own distribution, which is
+            // the drill-down. With no category chosen the filter is absent, so a plain search still
+            // sees the whole catalogue.
+            List<Query> filters = facet == Facet.CATEGORY
+                ? filterBuilder.selections(request)
+                : filterBuilder.selections(request, facet);
+
+            aggregations.put(facet.responseKey(), filtered(filters, terms(facet.field())));
         }
 
         for (String attribute : request.facetFields()) {

@@ -201,6 +201,35 @@ class FacetIT {
     }
 
     @Test
+    @DisplayName("the category facet drills down rather than listing the whole shop")
+    void categoryFacetIsDrillDown() {
+        // Category is navigation, not a facet, and is the one exception to the exclusion rule.
+        // Excluding its own filter would show every category in the shop on a category page - a
+        // shopper drilling into Clothing wants what is inside it, not a list of everything else.
+        SearchResults clothing = search(query(null, null, CLOTHING, null, null, null, null));
+
+        List<FacetValue> categories = clothing.facets().fields().get("categories");
+
+        assertThat(countOf(categories, String.valueOf(SHIRTS)))
+            .as("the child is offered, with its count inside this category")
+            .isEqualTo(5);
+        assertThat(countOf(categories, String.valueOf(SHOES)))
+            .as("a category outside the one being browsed is not")
+            .isZero();
+    }
+
+    @Test
+    @DisplayName("with no category chosen the facet still sees the whole catalogue")
+    void categoryFacetUnfiltered() {
+        // The same rule, read the other way: on a plain search there is no category filter to
+        // apply, so the buckets cover everything.
+        List<FacetValue> categories = search(unfiltered()).facets().fields().get("categories");
+
+        assertThat(countOf(categories, String.valueOf(SHIRTS))).isEqualTo(5);
+        assertThat(countOf(categories, String.valueOf(SHOES))).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("a category filter covers everything beneath it")
     void categorySubtree() {
         // Filed under Clothing > Shirts; browsing Clothing has to find them without this service

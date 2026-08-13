@@ -75,6 +75,30 @@ public record SearchQuery(
         this(q, page, size, sort, null, null, null, null, null, null, null, null);
     }
 
+    /**
+     * The same request, pinned to a category.
+     *
+     * <p>The id comes from the path, overriding anything in the query string — a category page is
+     * addressed by its URL, and letting a parameter contradict it would make one page show
+     * another's products.
+     *
+     * <p>Browsing also defaults to newest rather than relevance: with no text every document
+     * scores the same, so "relevance" degenerates into the tie-breaker and the shopper sees an
+     * order nobody chose. Newest is a real answer to "what should I show first".
+     */
+    public SearchQuery browsing(long categoryId) {
+        // Relevance with no text is not an ordering: every document scores the same, so it
+        // degenerates into the tie-breaker and the shopper sees an order nobody chose. Newest is a
+        // real answer to "what should I show first". A caller who explicitly asked for relevance
+        // on a text-less browse loses nothing by this - the two produce the same sequence.
+        SearchSort browseSort = !hasText() && sort == SearchSort.RELEVANCE
+            ? SearchSort.NEWEST
+            : sort;
+
+        return new SearchQuery(q, page, size, browseSort, categoryId, colors, sizes,
+            minPrice, maxPrice, inStock, attributes, facetFields);
+    }
+
     public boolean hasText() {
         return !q.isBlank();
     }
