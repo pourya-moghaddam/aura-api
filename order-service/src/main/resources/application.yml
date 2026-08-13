@@ -58,6 +58,25 @@ aura:
       # cart is business data and someone coming back a fortnight later is ordinary.
       guest-retention: ${AURA_GUEST_CART_RETENTION:P30D}
       cookie-secure: ${AURA_COOKIE_SECURE:false}
+    payment-reconciliation:
+      # How long a payment may sit pending before Zarinpal is asked about it directly. Lost
+      # callbacks are ordinary - a closed browser, a dropped connection on the way back - and each
+      # one is a customer who paid while the shop believes they did not.
+      older-than: ${AURA_PAYMENT_RECONCILE_AFTER:PT10M}
+      batch-size: ${AURA_PAYMENT_RECONCILE_BATCH:50}
+
+  payment:
+    zarinpal:
+      # mock settles locally so the whole flow can be exercised without a merchant account.
+      # MUST be http in production, where mock would mark every order paid for nothing.
+      mode: ${AURA_ZARINPAL_MODE:mock}
+      merchant-id: ${AURA_ZARINPAL_MERCHANT_ID:}
+      # sandbox.zarinpal.com for testing (authorities begin with S), payment.zarinpal.com live.
+      base-url: ${AURA_ZARINPAL_BASE_URL:https://sandbox.zarinpal.com}
+      # Must be reachable from the shopper's browser, so it is the public gateway address rather
+      # than this service's own.
+      callback-url: ${AURA_ZARINPAL_CALLBACK_URL:http://localhost:8080/api/orders/payments/callback}
+      result-url: ${AURA_STOREFRONT_PAYMENT_RESULT_URL:http://localhost:3000/checkout/result}
 
   security:
     jwt:

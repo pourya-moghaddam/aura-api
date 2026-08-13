@@ -47,7 +47,12 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/orders/delivery-methods").permitAll()
                 .requestMatchers("/api/orders/checkout", "/api/orders/checkout/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/orders/discounts/quote").permitAll()
-                .requestMatchers("/api/orders/payments/callback/**").permitAll()
+                // The gateway returns the shopper here with no credential of ours at all,
+                // which is exactly why nothing it says is believed without a server-side
+                // verify.
+                .requestMatchers("/api/orders/payments/callback",
+                    "/api/orders/payments/callback/**").permitAll()
+                .requestMatchers("/api/orders/payments/start/**").permitAll()
                 // Looking an order up by its trace code is how a guest checks on it afterwards -
                 // the code is the credential, which is why it is 10 random characters and not the
                 // primary key.
