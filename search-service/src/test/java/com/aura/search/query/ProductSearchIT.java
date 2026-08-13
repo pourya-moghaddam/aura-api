@@ -62,7 +62,9 @@ class ProductSearchIT {
         new IndexBootstrapper(client, new IndexDefinition(), properties).createIndexIfMissing();
 
         ProductIndexer indexer = new ProductIndexer(client, properties);
-        searchService = new ProductSearchService(client, properties, new ProductQueryBuilder());
+        FilterBuilder filters = new FilterBuilder();
+        searchService = new ProductSearchService(client, properties, new ProductQueryBuilder(),
+            filters, new FacetBuilder(filters));
 
         // A small shop, in Persian, with the awkward cases on purpose.
         indexer.apply(product(1, "کیف چرم زنانه", "کیف دستی از چرم طبیعی",

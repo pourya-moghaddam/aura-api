@@ -18,8 +18,13 @@ public record SearchResults(
     long total,
     boolean exhausted,
     int page,
-    int size
+    int size,
+    Facets facets
 ) {
+
+    public SearchResults(List<SearchHit> hits, long total, boolean exhausted, int page, int size) {
+        this(hits, total, exhausted, page, size, Facets.empty());
+    }
 
     /**
      * Whether another page exists.

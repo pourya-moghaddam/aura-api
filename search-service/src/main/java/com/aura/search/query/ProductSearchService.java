@@ -6,6 +6,7 @@ import co.elastic.clients.elasticsearch.core.SearchResponse;
 import com.aura.common.web.error.BusinessRuleException;
 import com.aura.search.config.SearchProperties;
 import com.aura.search.index.ProductDocument;
+import com.aura.search.query.dto.Facets;
 import com.aura.search.query.dto.SearchHit;
 import com.aura.search.query.dto.SearchQuery;
 import com.aura.search.query.dto.SearchResults;
@@ -27,6 +28,8 @@ public class ProductSearchService {
     private final ElasticsearchClient client;
     private final SearchProperties properties;
     private final ProductQueryBuilder queryBuilder;
+    private final FilterBuilder filterBuilder;
+    private final FacetBuilder facetBuilder;
 
     public SearchResults search(SearchQuery request) {
         SearchRequest search = SearchRequest.of(s -> s
@@ -36,6 +39,11 @@ public class ProductSearchService {
                 // A filter, not a must: the status contributes nothing to relevance and this way
                 // Elasticsearch can cache it.
                 .filter(queryBuilder.filters())))
+            // The sidebar selections go here rather than in the query, so they narrow the hits
+            // while the aggregations still see everything the text matched. That is the whole
+            // point of a post filter, and without it every unselected facet reports zero.
+            .postFilter(p -> p.bool(b -> b.filter(filterBuilder.selections(request))))
+            .aggregations(facetBuilder.aggregations(request))
             .sort(request.sort().options())
             .from(request.from())
             .size(request.size())
@@ -56,7 +64,9 @@ public class ProductSearchService {
             boolean exhausted = response.hits().total() != null
                 && "eq".equals(response.hits().total().relation().jsonValue());
 
-            return new SearchResults(hits, total, exhausted, request.page(), request.size());
+            Facets facets = facetBuilder.read(response.aggregations(), request);
+
+            return new SearchResults(hits, total, exhausted, request.page(), request.size(), facets);
 
         } catch (IOException | RuntimeException e) {
             // Deliberately not an empty page. "No results" and "search is broken" look identical
