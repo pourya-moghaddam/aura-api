@@ -53,6 +53,9 @@ public class SecurityConfig {
                 .requestMatchers("/api/orders/payments/callback",
                     "/api/orders/payments/callback/**").permitAll()
                 .requestMatchers("/api/orders/payments/start/**").permitAll()
+                // A seller-composed order link. The token in the URL is the whole
+                // credential, because the buyer has no account to sign into.
+                .requestMatchers("/api/orders/links/**").permitAll()
                 // Looking an order up by its trace code is how a guest checks on it afterwards -
                 // the code is the credential, which is why it is 10 random characters and not the
                 // primary key.

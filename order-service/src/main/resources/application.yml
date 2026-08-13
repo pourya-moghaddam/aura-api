@@ -58,6 +58,11 @@ aura:
       # cart is business data and someone coming back a fortnight later is ordinary.
       guest-retention: ${AURA_GUEST_CART_RETENTION:P30D}
       cookie-secure: ${AURA_COOKIE_SECURE:false}
+    link:
+      # How long a seller's order link works for. Short, because the stock behind it is held from
+      # the moment the order is written.
+      validity: ${AURA_ORDER_LINK_VALIDITY:PT48H}
+      base-url: ${AURA_STOREFRONT_PAY_LINK_URL:http://localhost:3000/pay}
     payment-reconciliation:
       # How long a payment may sit pending before Zarinpal is asked about it directly. Lost
       # callbacks are ordinary - a closed browser, a dropped connection on the way back - and each

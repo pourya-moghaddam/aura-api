@@ -395,6 +395,72 @@ class CheckoutServiceTest {
     }
 
     @Nested
+    @DisplayName("an order a seller composed")
+    class SellerComposed {
+
+        private List<CheckoutService.RequestedLine> lines() {
+            return List.of(new CheckoutService.RequestedLine(VARIANT, 2));
+        }
+
+        @Test
+        @DisplayName("goes through the same path as an ordinary checkout")
+        void sameOrderingAsCheckout() {
+            // Not a second implementation: the sequence - validate, write, reserve last - is what
+            // stops an order existing with no stock held for it.
+            checkoutService.placeForSeller(9L, request(null, null), lines(), null);
+
+            var inOrder = org.mockito.Mockito.inOrder(orderRepository, catalogGateway);
+            inOrder.verify(orderRepository).saveAndFlush(any());
+            inOrder.verify(catalogGateway).reserveStock(anyLong(), any());
+        }
+
+        @Test
+        @DisplayName("is marked as coming from a seller link, with no user attached")
+        void recordsItsSource() {
+            checkoutService.placeForSeller(9L, request(null, null), lines(), null);
+
+            ArgumentCaptor<Order> saved = ArgumentCaptor.forClass(Order.class);
+            verify(orderRepository).saveAndFlush(saved.capture());
+            assertThat(saved.getValue().getSource()).isEqualTo(OrderSource.SELLER_LINK);
+            assertThat(saved.getValue().getUserId()).isNull();
+        }
+
+        @Test
+        @DisplayName("cannot contain another seller's product")
+        void refusesForeignProducts() {
+            // The seller id comes from catalog's snapshot, not from the request, so a seller
+            // cannot claim a line by asserting ownership of it. Otherwise anyone with a seller
+            // account could compose an order from the whole catalogue and take a link to it.
+            assertThatThrownBy(() ->
+                checkoutService.placeForSeller(999L, request(null, null), lines(), null))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("only contain your own products");
+
+            verify(orderRepository, never()).saveAndFlush(any());
+            verify(catalogGateway, never()).reserveStock(anyLong(), any());
+        }
+
+        @Test
+        @DisplayName("an empty order is refused")
+        void refusesEmpty() {
+            assertThatThrownBy(() ->
+                checkoutService.placeForSeller(9L, request(null, null), List.of(), null))
+                .isInstanceOf(BusinessRuleException.class);
+        }
+
+        @Test
+        @DisplayName("does not touch anybody's cart")
+        void leavesCartsAlone() {
+            // The buyer is on the telephone. There is no basket to empty, and emptying the
+            // seller's own would be a peculiar thing to do.
+            checkoutService.placeForSeller(9L, request(null, null), lines(), null);
+
+            verify(cartRepository, never()).delete(any());
+            verify(cartItemRepository, never()).deleteByCartId(anyLong());
+        }
+    }
+
+    @Nested
     @DisplayName("idempotency")
     class Idempotency {
 

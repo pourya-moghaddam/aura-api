@@ -61,19 +61,9 @@ public class CheckoutService {
     public OrderResponse checkout(CartOwner owner, CheckoutRequest request) {
         String idempotencyKey = blankToNull(request.idempotencyKey());
 
-        if (idempotencyKey != null) {
-            // Taken before the lookup, not after: two tabs submitting at once both miss the
-            // lookup otherwise, and the second is refused by the unique index - a 500 on exactly
-            // the retry the key exists to make safe.
-            orderRepository.lockIdempotencyKey(idempotencyKey);
-
-            Order existing = orderRepository.findByIdempotencyKey(idempotencyKey).orElse(null);
-            if (existing != null) {
-                log.info("Checkout replayed with key {}; returning order {}",
-                    idempotencyKey, existing.getTraceCode());
-                return OrderResponse.of(existing,
-                    orderItemRepository.findByOrderIdOrderByIdAsc(existing.getId()));
-            }
+        OrderResponse replay = replayOf(idempotencyKey);
+        if (replay != null) {
+            return replay;
         }
 
         Cart cart = findCart(owner)
@@ -85,23 +75,75 @@ public class CheckoutService {
             throw new BusinessRuleException("cart-empty", "Your basket is empty.");
         }
 
+        List<RequestedLine> lines = cartItems.stream()
+            .map(item -> new RequestedLine(item.getVariantId(), item.getQuantity()))
+            .toList();
+
+        OrderResponse placed = place(owner.isUser() ? owner.userId() : null, request, lines,
+            OrderSource.CUSTOMER, idempotencyKey, null);
+
+        // The basket has become an order. Leaving it would show the shopper their items still
+        // waiting to be bought while they are on the payment page.
+        cartItemRepository.deleteByCartId(cart.getId());
+        cartRepository.delete(cart);
+
+        return placed;
+    }
+
+    /**
+     * Places an order a seller composed on a buyer's behalf — requirement 1's custom link.
+     *
+     * <p>Same path as an ordinary checkout, deliberately. The ordering inside it is what stops an
+     * order existing with no stock held for it, and a second implementation would eventually get
+     * that wrong in a way nobody notices until a customer is told their goods are not there.
+     *
+     * <p>{@code onlySellerId} restricts the lines to that seller's own products. Without it a
+     * seller could compose an order from anyone's catalogue and take a link to it.
+     */
+    @Transactional
+    public OrderResponse placeForSeller(long sellerId, CheckoutRequest request,
+                                        List<RequestedLine> lines, String idempotencyKey) {
+        OrderResponse replay = replayOf(idempotencyKey);
+        return replay != null
+            ? replay
+            : place(null, request, lines, OrderSource.SELLER_LINK, idempotencyKey, sellerId);
+    }
+
+    /**
+     * The order-writing path, shared by an ordinary checkout and a seller's composed order.
+     *
+     * <p>The sequence is the design and it is chosen around which way this should fail. Prices and
+     * stock are re-read from catalog rather than trusted; the order row is written before the
+     * stock is held, because catalog keys the reservation by order id; and the remote reservation
+     * is <em>last</em>, so a failure anywhere else rolls the order back before any stock has moved.
+     */
+    private OrderResponse place(Long userId, CheckoutRequest request, List<RequestedLine> lines,
+                                OrderSource source, String idempotencyKey, Long onlySellerId) {
+        if (lines.isEmpty()) {
+            throw new BusinessRuleException("cart-empty", "Your basket is empty.");
+        }
+
         // Priced and checked against catalog now, not against what the cart remembers. The shopper
         // has been filling in an address; the shop may have moved on.
         Map<Long, VariantSnapshot> snapshots = catalogGateway.snapshotsFor(
-            cartItems.stream().map(CartItem::getVariantId).toList());
-        requireAllPurchasable(cartItems, snapshots);
+            lines.stream().map(RequestedLine::variantId).toList());
+        requireAllPurchasable(lines, snapshots);
+
+        if (onlySellerId != null) {
+            requireAllBelongTo(onlySellerId, lines, snapshots);
+        }
 
         DeliveryMethod delivery = deliveryMethodService.requireSelectable(request.deliveryMethodId());
 
-        long subtotal = cartItems.stream()
-            .mapToLong(item -> snapshots.get(item.getVariantId()).unitPrice() * item.getQuantity())
+        long subtotal = lines.stream()
+            .mapToLong(line -> snapshots.get(line.variantId()).unitPrice() * line.quantity())
             .sum();
 
         Order order = orderRepository.saveAndFlush(
-            newOrder(owner, request, delivery, subtotal, idempotencyKey));
+            newOrder(userId, request, delivery, subtotal, idempotencyKey, source));
 
-        List<OrderItem> items = cartItems.stream()
-            .map(item -> toOrderItem(order.getId(), item, snapshots.get(item.getVariantId())))
+        List<OrderItem> items = lines.stream()
+            .map(line -> toOrderItem(order.getId(), line, snapshots.get(line.variantId())))
             .toList();
         orderItemRepository.saveAll(items);
 
@@ -118,15 +160,37 @@ public class CheckoutService {
             .map(item -> new CatalogGateway.StockLine(item.getVariantId(), item.getQuantity()))
             .toList());
 
-        // The basket has become an order. Leaving it would show the shopper their items still
-        // waiting to be bought while they are on the payment page.
-        cartItemRepository.deleteByCartId(cart.getId());
-        cartRepository.delete(cart);
-
-        log.info("Order {} placed: {} item(s), {} Rial, {}", order.getTraceCode(), items.size(),
-            order.getTotal(), owner.isUser() ? "user " + owner.userId() : "guest");
+        log.info("Order {} placed ({}): {} item(s), {} Rial", order.getTraceCode(), source,
+            items.size(), order.getTotal());
 
         return OrderResponse.of(order, items);
+    }
+
+    /**
+     * The order this key already placed, or null if it is new.
+     *
+     * <p>The lock is taken before the lookup, not after: two tabs submitting at once both miss the
+     * lookup otherwise, and the second is refused by the unique index — a 500 on exactly the retry
+     * the key exists to make safe.
+     */
+    private OrderResponse replayOf(String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return null;
+        }
+        orderRepository.lockIdempotencyKey(idempotencyKey);
+
+        return orderRepository.findByIdempotencyKey(idempotencyKey)
+            .map(existing -> {
+                log.info("Checkout replayed with key {}; returning order {}",
+                    idempotencyKey, existing.getTraceCode());
+                return OrderResponse.of(existing,
+                    orderItemRepository.findByOrderIdOrderByIdAsc(existing.getId()));
+            })
+            .orElse(null);
+    }
+
+    /** What was asked for, in the only terms both paths share. */
+    public record RequestedLine(Long variantId, Integer quantity) {
     }
 
     // --- reads ---------------------------------------------------------------------------------
@@ -164,11 +228,11 @@ public class CheckoutService {
 
     // --- building ------------------------------------------------------------------------------
 
-    private Order newOrder(CartOwner owner, CheckoutRequest request, DeliveryMethod delivery,
-                           long subtotal, String idempotencyKey) {
+    private Order newOrder(Long userId, CheckoutRequest request, DeliveryMethod delivery,
+                           long subtotal, String idempotencyKey, OrderSource source) {
         Order order = new Order();
         order.setTraceCode(uniqueTraceCode());
-        order.setUserId(owner.isUser() ? owner.userId() : null);
+        order.setUserId(userId);
 
         order.setBuyerFirstName(request.buyerFirstName().trim());
         order.setBuyerLastName(request.buyerLastName().trim());
@@ -199,7 +263,7 @@ public class CheckoutService {
 
         order.setPaymentStatus(PaymentStatus.PENDING);
         order.setDerivedStatus(FulfillmentStatus.PENDING);
-        order.setSource(OrderSource.CUSTOMER);
+        order.setSource(source);
         order.setIdempotencyKey(idempotencyKey);
 
         order.setCreatedAt(OffsetDateTime.now());
@@ -207,7 +271,7 @@ public class CheckoutService {
         return order;
     }
 
-    private OrderItem toOrderItem(Long orderId, CartItem cartItem, VariantSnapshot snapshot) {
+    private OrderItem toOrderItem(Long orderId, RequestedLine line, VariantSnapshot snapshot) {
         Map<String, String> variant = new LinkedHashMap<>();
         if (snapshot.colorName() != null) {
             variant.put("color", snapshot.colorName());
@@ -221,7 +285,7 @@ public class CheckoutService {
 
         return OrderItem.of(orderId, snapshot.productId(), snapshot.variantId(),
             snapshot.sellerId(), snapshot.productName(), variant,
-            snapshot.unitPrice(), cartItem.getQuantity());
+            snapshot.unitPrice(), line.quantity());
     }
 
     private void applyDiscount(Order order, String code, long subtotal) {
@@ -242,17 +306,17 @@ public class CheckoutService {
      * <p>All of them are named at once rather than one per attempt: a shopper made to discover
      * their problems one submission at a time will abandon the basket before the third.
      */
-    private void requireAllPurchasable(List<CartItem> cartItems,
+    private void requireAllPurchasable(List<RequestedLine> lines,
                                        Map<Long, VariantSnapshot> snapshots) {
         List<String> problems = new ArrayList<>();
 
-        for (CartItem item : cartItems) {
-            VariantSnapshot snapshot = snapshots.get(item.getVariantId());
+        for (RequestedLine line : lines) {
+            VariantSnapshot snapshot = snapshots.get(line.variantId());
 
             if (snapshot == null || !snapshot.purchasable()) {
                 problems.add((snapshot == null ? "An item" : snapshot.productName())
                     + " is no longer sold.");
-            } else if (snapshot.available() < item.getQuantity()) {
+            } else if (snapshot.available() < line.quantity()) {
                 problems.add(snapshot.productName() + ": only " + Math.max(snapshot.available(), 0)
                     + " left in stock.");
             }
@@ -261,6 +325,24 @@ public class CheckoutService {
         if (!problems.isEmpty()) {
             throw new BusinessRuleException("cart-not-purchasable",
                 "Your basket has changed. " + String.join(" ", problems));
+        }
+    }
+
+    /**
+     * Refuses a composed order containing anyone else's products.
+     *
+     * <p>The seller id is taken from catalog's snapshot rather than from the request, so a seller
+     * cannot claim a line by asserting ownership of it.
+     */
+    private void requireAllBelongTo(long sellerId, List<RequestedLine> lines,
+                                    Map<Long, VariantSnapshot> snapshots) {
+        boolean foreign = lines.stream()
+            .map(line -> snapshots.get(line.variantId()))
+            .anyMatch(snapshot -> !snapshot.sellerId().equals(sellerId));
+
+        if (foreign) {
+            throw new BusinessRuleException("not-your-product",
+                "An order link may only contain your own products.");
         }
     }
 
