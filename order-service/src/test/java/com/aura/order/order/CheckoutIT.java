@@ -99,7 +99,7 @@ class CheckoutIT {
         @Override
         public Map<Long, VariantSnapshot> snapshotsFor(Collection<Long> variantIds) {
             return Map.of(VARIANT, new VariantSnapshot(VARIANT, 4L, 9L, "Shirt", "shirt",
-                "Navy", "L", 500_000L, true, 50));
+                "Navy", "L", 500_000L, true, 50, 3L, List.of(1L, 3L)));
         }
 
         @Override

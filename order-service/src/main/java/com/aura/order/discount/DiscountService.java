@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -48,7 +49,8 @@ public class DiscountService {
      * exposure to anonymous shoppers.
      */
     @Transactional(readOnly = true)
-    public DiscountQuoteResponse quote(String code, long subtotal, Long userId) {
+    public DiscountQuoteResponse quote(String code, List<DiscountLine> lines, Long userId) {
+        long subtotal = subtotalOf(lines);
         String normalised = normalise(code);
 
         Optional<DiscountCode> found = discountCodeRepository.findByCodeIgnoreCase(normalised);
@@ -58,13 +60,13 @@ public class DiscountService {
         }
 
         DiscountCode discount = found.get();
-        Optional<DiscountRejection> rejection = validate(discount, subtotal, userId);
+        Optional<DiscountRejection> rejection = validate(discount, lines, userId);
 
         return rejection
             .map(reason -> DiscountQuoteResponse.rejected(discount.getCode(), subtotal,
                 reason.code(), reason.messageFor(discount)))
             .orElseGet(() -> DiscountQuoteResponse.accepted(discount.getCode(), subtotal,
-                discount.discountFor(subtotal)));
+                discount.discountFor(discount.eligibleSubtotal(lines))));
     }
 
     /**
@@ -79,16 +81,16 @@ public class DiscountService {
      * serialised: the second blocks, then sees the incremented counter and is refused.
      */
     @Transactional(propagation = Propagation.MANDATORY)
-    public Redemption redeem(String code, long subtotal, Long userId, long orderId) {
+    public Redemption redeem(String code, List<DiscountLine> lines, Long userId, long orderId) {
         DiscountCode discount = discountCodeRepository.lockByCode(normalise(code))
             .orElseThrow(() -> new BusinessRuleException(
                 DiscountRejection.NOT_FOUND.code(), DiscountRejection.NOT_FOUND.message()));
 
-        validate(discount, subtotal, userId).ifPresent(reason -> {
+        validate(discount, lines, userId).ifPresent(reason -> {
             throw new BusinessRuleException(reason.code(), reason.messageFor(discount));
         });
 
-        long amount = discount.discountFor(subtotal);
+        long amount = discount.discountFor(discount.eligibleSubtotal(lines));
 
         discount.recordUse();
         discountCodeRepository.save(discount);
@@ -117,8 +119,14 @@ public class DiscountService {
      * <p>Shared verbatim by quote and redeem. Two copies of these rules would drift, and the way
      * they drift is that a shopper is quoted a discount and then charged full price.
      */
-    private Optional<DiscountRejection> validate(DiscountCode discount, long subtotal, Long userId) {
+    private Optional<DiscountRejection> validate(DiscountCode discount, List<DiscountLine> lines,
+                                                 Long userId) {
         OffsetDateTime now = OffsetDateTime.now();
+        long subtotal = subtotalOf(lines);
+        // The minimum is judged on the whole order and the discount on the eligible part. That is
+        // how a shopper reads "spend 500,000 and get 20% off shoes" - the threshold is what they
+        // spend, the offer is what it applies to.
+        long eligible = discount.eligibleSubtotal(lines);
 
         if (!discount.isActive()) {
             return Optional.of(DiscountRejection.NOT_FOUND);
@@ -140,7 +148,13 @@ public class DiscountService {
                >= discount.getPerUserLimit()) {
             return Optional.of(DiscountRejection.PER_USER_LIMIT);
         }
-        if (discount.discountFor(subtotal) <= 0) {
+        if (eligible <= 0 && subtotal > 0) {
+            // The code is fine; this basket simply has nothing it applies to. Said separately
+            // from "no effect" because the shopper's remedy is different - add a qualifying item,
+            // rather than give up on the code.
+            return Optional.of(DiscountRejection.NOT_APPLICABLE);
+        }
+        if (discount.discountFor(eligible) <= 0) {
             // An empty cart, or a percentage so small that integer division rounds it to nothing.
             // Spending a use of a limited code to take off zero Rial is worse than refusing it.
             return Optional.of(DiscountRejection.NO_EFFECT);
@@ -227,6 +241,8 @@ public class DiscountService {
         discount.setMaxDiscount(request.type() == DiscountType.PERCENTAGE
             ? request.maxDiscount() : null);
         discount.setMinOrderTotal(request.minOrderTotal());
+        discount.setScope(request.scope());
+        discount.setScopeIds(request.scopeIds().toArray(Long[]::new));
         discount.setUsageLimit(request.usageLimit());
         discount.setPerUserLimit(request.perUserLimit());
         discount.setStartsAt(request.startsAt());
@@ -240,6 +256,20 @@ public class DiscountService {
      * instead of a constraint violation.
      */
     private void requireSane(DiscountCodeRequest request) {
+        // A scoped code with nothing to match is not a restriction, it is a code that silently
+        // never works; an order-wide code carrying ids is the same mistake read from the other
+        // side. The database refuses both too - this is so an admin gets a sentence rather than a
+        // constraint violation.
+        if (request.scope() != DiscountScope.ORDER && request.scopeIds().isEmpty()) {
+            throw new BusinessRuleException("discount-scope-empty",
+                "A " + request.scope().name().toLowerCase()
+                    + " discount needs at least one " + request.scope().name().toLowerCase()
+                    + " to apply to.");
+        }
+        if (request.scope() == DiscountScope.ORDER && !request.scopeIds().isEmpty()) {
+            throw new BusinessRuleException("discount-scope-unused",
+                "An order-wide discount cannot be limited to particular categories or products.");
+        }
         if (request.type() == DiscountType.PERCENTAGE && request.value() > 100) {
             throw new BusinessRuleException("discount-percentage-too-large",
                 "A percentage discount cannot exceed 100.");
@@ -258,6 +288,10 @@ public class DiscountService {
      */
     private String normalise(String code) {
         return code == null ? "" : code.trim().toUpperCase(java.util.Locale.ROOT);
+    }
+
+    private long subtotalOf(List<DiscountLine> lines) {
+        return lines.stream().mapToLong(DiscountLine::lineTotal).sum();
     }
 
     private String trimmed(String value) {

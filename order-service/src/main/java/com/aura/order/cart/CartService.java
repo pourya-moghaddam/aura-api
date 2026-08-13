@@ -54,6 +54,34 @@ public class CartService {
             .orElseGet(CartResponse::empty);
     }
 
+    /**
+     * The basket in the terms a discount is judged in.
+     *
+     * <p>Priced against catalog like everything else here, and carrying each line's category path
+     * so a scoped code can be matched. An empty list for a shopper with no basket, which is what
+     * makes quoting a code before adding anything answer "nothing to apply it to" rather than fail.
+     */
+    @Transactional(readOnly = true)
+    public List<com.aura.order.discount.DiscountLine> discountLines(CartOwner owner) {
+        return find(owner)
+            .map(cart -> {
+                List<CartItem> items = cartItemRepository
+                    .findByCartIdOrderByAddedAtAscIdAsc(cart.getId());
+                Map<Long, VariantSnapshot> snapshots = catalogGateway.snapshotsFor(
+                    items.stream().map(CartItem::getVariantId).toList());
+
+                return items.stream()
+                    .map(item -> java.util.Optional.ofNullable(snapshots.get(item.getVariantId()))
+                        // A withdrawn line is worth nothing towards a discount, exactly as it is
+                        // worth nothing towards the subtotal.
+                        .filter(VariantSnapshot::purchasable)
+                        .map(snapshot -> snapshot.toDiscountLine(item.getQuantity())))
+                    .flatMap(java.util.Optional::stream)
+                    .toList();
+            })
+            .orElseGet(List::of);
+    }
+
     // --- writes --------------------------------------------------------------------------------
 
     /**

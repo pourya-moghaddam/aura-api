@@ -59,7 +59,7 @@ class CartServiceTest {
 
     private VariantSnapshot snapshot(long variantId, long price, int available, boolean purchasable) {
         return new VariantSnapshot(variantId, PRODUCT, 9L, "Shirt", "shirt", "Navy", "L",
-            price, purchasable, available);
+            price, purchasable, available, 3L, java.util.List.of(1L, 3L));
     }
 
     private void catalogSays(VariantSnapshot... snapshots) {

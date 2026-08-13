@@ -16,6 +16,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,12 +48,23 @@ class DiscountServiceTest {
     @InjectMocks
     private DiscountService discountService;
 
+    private static final long CLOTHING = 1L;
+    private static final long SHIRTS = 2L;
+    private static final long SHOES = 3L;
+    private static final long SHIRT = 100L;
+    private static final long SHOE = 200L;
+
     private DiscountCode discount;
 
     @BeforeEach
     void setUp() {
         discount = DiscountCode.of("SUMMER", DiscountType.PERCENTAGE, 10L);
         discount.setId(1L);
+    }
+
+    /** One ordinary line worth the given amount, filed under Clothing > Shirts. */
+    private static List<DiscountLine> basket(long subtotal) {
+        return List.of(new DiscountLine(SHIRT, SHIRTS, List.of(CLOTHING, SHIRTS), subtotal));
     }
 
     /** Both lookups answer with the same row, so a test can be written once for both paths. */
@@ -62,13 +74,13 @@ class DiscountServiceTest {
     }
 
     private void assertRefused(DiscountRejection reason, long subtotal, Long userId) {
-        DiscountQuoteResponse quote = discountService.quote("SUMMER", subtotal, userId);
+        DiscountQuoteResponse quote = discountService.quote("SUMMER", basket(subtotal), userId);
         assertThat(quote.valid()).isFalse();
         assertThat(quote.reasonCode()).isEqualTo(reason.code());
         assertThat(quote.discountAmount()).isZero();
         assertThat(quote.newTotal()).isEqualTo(subtotal);
 
-        assertThatThrownBy(() -> discountService.redeem("SUMMER", subtotal, userId, 99L))
+        assertThatThrownBy(() -> discountService.redeem("SUMMER", basket(subtotal), userId, 99L))
             .isInstanceOf(BusinessRuleException.class);
         verify(discountRedemptionRepository, never()).save(any());
     }
@@ -83,7 +95,7 @@ class DiscountServiceTest {
             when(discountCodeRepository.findByCodeIgnoreCase("SUMMER"))
                 .thenReturn(Optional.of(discount));
 
-            DiscountQuoteResponse quote = discountService.quote("SUMMER", 1_000_000L, 7L);
+            DiscountQuoteResponse quote = discountService.quote("SUMMER", basket(1_000_000L), 7L);
 
             assertThat(quote.valid()).isTrue();
             assertThat(quote.discountAmount()).isEqualTo(100_000L);
@@ -98,7 +110,7 @@ class DiscountServiceTest {
             when(discountCodeRepository.findByCodeIgnoreCase("SUMMER"))
                 .thenReturn(Optional.of(discount));
 
-            discountService.quote("SUMMER", 1_000_000L, 7L);
+            discountService.quote("SUMMER", basket(1_000_000L), 7L);
 
             assertThat(discount.getTimesUsed()).isZero();
             verify(discountCodeRepository, never()).save(any());
@@ -110,7 +122,7 @@ class DiscountServiceTest {
         void unknownCode() {
             when(discountCodeRepository.findByCodeIgnoreCase("NOPE")).thenReturn(Optional.empty());
 
-            DiscountQuoteResponse quote = discountService.quote("nope", 500_000L, null);
+            DiscountQuoteResponse quote = discountService.quote("nope", basket(500_000L), null);
 
             assertThat(quote.valid()).isFalse();
             assertThat(quote.reasonCode()).isEqualTo("discount-not-found");
@@ -123,7 +135,7 @@ class DiscountServiceTest {
             when(discountCodeRepository.findByCodeIgnoreCase("SUMMER"))
                 .thenReturn(Optional.of(discount));
 
-            assertThat(discountService.quote("  summer ", 1_000_000L, null).valid()).isTrue();
+            assertThat(discountService.quote("  summer ", basket(1_000_000L), null).valid()).isTrue();
         }
 
         @Test
@@ -133,7 +145,7 @@ class DiscountServiceTest {
             when(discountCodeRepository.findByCodeIgnoreCase("SUMMER"))
                 .thenReturn(Optional.of(discount));
 
-            assertThat(discountService.quote("SUMMER", 500_000L, null).message())
+            assertThat(discountService.quote("SUMMER", basket(500_000L), null).message())
                 .contains("2000000");
         }
     }
@@ -217,7 +229,7 @@ class DiscountServiceTest {
             when(discountCodeRepository.findByCodeIgnoreCase("SUMMER"))
                 .thenReturn(Optional.of(discount));
 
-            assertThat(discountService.quote("SUMMER", 1_000_000L, null).valid()).isTrue();
+            assertThat(discountService.quote("SUMMER", basket(1_000_000L), null).valid()).isTrue();
         }
     }
 
@@ -233,7 +245,7 @@ class DiscountServiceTest {
             // fail only under load.
             when(discountCodeRepository.lockByCode("SUMMER")).thenReturn(Optional.of(discount));
 
-            discountService.redeem("SUMMER", 1_000_000L, null, 42L);
+            discountService.redeem("SUMMER", basket(1_000_000L), null, 42L);
 
             verify(discountCodeRepository).lockByCode("SUMMER");
             verify(discountCodeRepository, never()).findByCodeIgnoreCase(anyString());
@@ -245,7 +257,7 @@ class DiscountServiceTest {
             when(discountCodeRepository.lockByCode("SUMMER")).thenReturn(Optional.of(discount));
 
             DiscountService.Redemption redemption =
-                discountService.redeem("SUMMER", 1_000_000L, 7L, 42L);
+                discountService.redeem("SUMMER", basket(1_000_000L), 7L, 42L);
 
             assertThat(redemption.amount()).isEqualTo(100_000L);
             assertThat(redemption.discountCodeId()).isEqualTo(1L);
@@ -271,7 +283,7 @@ class DiscountServiceTest {
             discount.setPerUserLimit(1);
             when(discountCodeRepository.lockByCode("SUMMER")).thenReturn(Optional.of(discount));
 
-            discountService.redeem("SUMMER", 1_000_000L, null, 42L);
+            discountService.redeem("SUMMER", basket(1_000_000L), null, 42L);
 
             ArgumentCaptor<DiscountRedemption> saved =
                 ArgumentCaptor.forClass(DiscountRedemption.class);
@@ -286,8 +298,147 @@ class DiscountServiceTest {
         void unknownCodeThrows() {
             when(discountCodeRepository.lockByCode("NOPE")).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> discountService.redeem("nope", 1_000_000L, null, 42L))
+            assertThatThrownBy(() -> discountService.redeem("nope", basket(1_000_000L), null, 42L))
                 .isInstanceOf(BusinessRuleException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("scoping")
+    class Scoping {
+
+        /** A shirt at 800,000 and a pair of shoes at 200,000: one million between them. */
+        private List<DiscountLine> mixedBasket() {
+            return List.of(
+                new DiscountLine(SHIRT, SHIRTS, List.of(CLOTHING, SHIRTS), 800_000L),
+                new DiscountLine(SHOE, SHOES, List.of(SHOES), 200_000L));
+        }
+
+        private void scopedTo(DiscountScope scope, Long... ids) {
+            discount.setScope(scope);
+            discount.setScopeIds(ids);
+        }
+
+        @Test
+        @DisplayName("an order-wide code discounts the whole basket")
+        void orderWide() {
+            when(discountCodeRepository.findByCodeIgnoreCase("SUMMER"))
+                .thenReturn(Optional.of(discount));
+
+            assertThat(discountService.quote("SUMMER", mixedBasket(), null).discountAmount())
+                .isEqualTo(100_000L);
+        }
+
+        @Test
+        @DisplayName("a category code discounts only the lines in that category")
+        void categoryScoped() {
+            // 20% off shoes against shoes and a shirt takes 20% of the shoes. Taking 20% of
+            // everything is the shop giving away money it never advertised.
+            scopedTo(DiscountScope.CATEGORY, SHOES);
+            discount.setValue(20L);
+            when(discountCodeRepository.findByCodeIgnoreCase("SUMMER"))
+                .thenReturn(Optional.of(discount));
+
+            assertThat(discountService.quote("SUMMER", mixedBasket(), null).discountAmount())
+                .isEqualTo(40_000L);
+        }
+
+        @Test
+        @DisplayName("a category code covers descendants of that category")
+        void categoryInheritance() {
+            // The shirt is filed under Clothing > Shirts. A code for Clothing has to cover it, or
+            // a campaign stops working the moment an admin tidies the tree.
+            scopedTo(DiscountScope.CATEGORY, CLOTHING);
+            when(discountCodeRepository.findByCodeIgnoreCase("SUMMER"))
+                .thenReturn(Optional.of(discount));
+
+            assertThat(discountService.quote("SUMMER", mixedBasket(), null).discountAmount())
+                .isEqualTo(80_000L);
+        }
+
+        @Test
+        @DisplayName("a product code discounts only that product, with no inheritance")
+        void productScoped() {
+            scopedTo(DiscountScope.PRODUCT, SHOE);
+            when(discountCodeRepository.findByCodeIgnoreCase("SUMMER"))
+                .thenReturn(Optional.of(discount));
+
+            assertThat(discountService.quote("SUMMER", mixedBasket(), null).discountAmount())
+                .isEqualTo(20_000L);
+        }
+
+        @Test
+        @DisplayName("a code matching nothing in the basket says so, rather than taking nothing")
+        void nothingApplicable() {
+            // The shopper's remedy is to add a qualifying item, which is different advice from
+            // "that code does not work".
+            scopedTo(DiscountScope.CATEGORY, 999L);
+            when(discountCodeRepository.findByCodeIgnoreCase("SUMMER"))
+                .thenReturn(Optional.of(discount));
+
+            DiscountQuoteResponse quote = discountService.quote("SUMMER", mixedBasket(), null);
+
+            assertThat(quote.valid()).isFalse();
+            assertThat(quote.reasonCode()).isEqualTo("discount-not-applicable");
+        }
+
+        @Test
+        @DisplayName("the minimum is judged on the whole order, the discount on the eligible part")
+        void minimumIsWholeOrder() {
+            // "Spend 900,000 and get 10% off shoes" - the threshold is what they spend, the offer
+            // is what it applies to. Judging the minimum on the eligible part instead would make
+            // the offer unreachable and nobody could say why.
+            scopedTo(DiscountScope.CATEGORY, SHOES);
+            discount.setMinOrderTotal(900_000L);
+            when(discountCodeRepository.findByCodeIgnoreCase("SUMMER"))
+                .thenReturn(Optional.of(discount));
+
+            DiscountQuoteResponse quote = discountService.quote("SUMMER", mixedBasket(), null);
+
+            assertThat(quote.valid()).isTrue();
+            assertThat(quote.discountAmount()).isEqualTo(20_000L);
+        }
+
+        @Test
+        @DisplayName("the ceiling still applies, over the eligible part")
+        void capAppliesToEligible() {
+            scopedTo(DiscountScope.CATEGORY, CLOTHING);
+            discount.setMaxDiscount(50_000L);
+            when(discountCodeRepository.findByCodeIgnoreCase("SUMMER"))
+                .thenReturn(Optional.of(discount));
+
+            assertThat(discountService.quote("SUMMER", mixedBasket(), null).discountAmount())
+                .isEqualTo(50_000L);
+        }
+
+        @Test
+        @DisplayName("a fixed code cannot take more off than the eligible lines are worth")
+        void fixedCappedByEligible() {
+            // 500,000 off "shoes" when there are only 200,000 of shoes in the basket is 200,000 -
+            // otherwise the shirt is quietly discounted too.
+            scopedTo(DiscountScope.PRODUCT, SHOE);
+            discount.setType(DiscountType.FIXED);
+            discount.setValue(500_000L);
+            when(discountCodeRepository.findByCodeIgnoreCase("SUMMER"))
+                .thenReturn(Optional.of(discount));
+
+            assertThat(discountService.quote("SUMMER", mixedBasket(), null).discountAmount())
+                .isEqualTo(200_000L);
+        }
+
+        @Test
+        @DisplayName("redeeming honours the scope exactly as quoting does")
+        void redeemMatchesQuote() {
+            // Two sets of rules would drift, and the way they drift is that a shopper is quoted
+            // one figure and charged another.
+            scopedTo(DiscountScope.CATEGORY, SHOES);
+            discount.setValue(20L);
+            stored(discount);
+
+            long quoted = discountService.quote("SUMMER", mixedBasket(), null).discountAmount();
+            long redeemed = discountService.redeem("SUMMER", mixedBasket(), null, 42L).amount();
+
+            assertThat(redeemed).isEqualTo(quoted).isEqualTo(40_000L);
         }
     }
 
@@ -297,7 +448,7 @@ class DiscountServiceTest {
 
         private DiscountCodeRequest request(String code, DiscountType type, long value) {
             return new DiscountCodeRequest(code, null, type, value, null, null, null, null,
-                null, null, null);
+                null, null, null, null, null);
         }
 
         @Test
@@ -337,7 +488,7 @@ class DiscountServiceTest {
         void backwardsWindow() {
             OffsetDateTime now = OffsetDateTime.now();
             DiscountCodeRequest backwards = new DiscountCodeRequest("X", null, DiscountType.FIXED,
-                1L, null, null, null, null, now.plusDays(1), now, null);
+                1L, null, null, null, null, now.plusDays(1), now, null, null, null);
 
             assertThatThrownBy(() -> discountService.create(backwards))
                 .isInstanceOf(BusinessRuleException.class)
@@ -351,7 +502,8 @@ class DiscountServiceTest {
             when(discountCodeRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
             DiscountCodeResponse created = discountService.create(new DiscountCodeRequest("X", null,
-                DiscountType.FIXED, 50_000L, 10_000L, null, null, null, null, null, null));
+                DiscountType.FIXED, 50_000L, 10_000L, null, null, null, null, null, null,
+                null, null));
 
             assertThat(created.maxDiscount()).isNull();
         }
@@ -372,6 +524,42 @@ class DiscountServiceTest {
 
             assertThat(updated.timesUsed()).isEqualTo(4);
             assertThat(updated.type()).isEqualTo(DiscountType.FIXED);
+        }
+
+        @Test
+        @DisplayName("a scoped code with nothing to apply to is refused")
+        void scopedWithNoIds() {
+            // Not a restriction - a code that silently never works.
+            assertThatThrownBy(() -> discountService.create(new DiscountCodeRequest("X", null,
+                DiscountType.FIXED, 1L, null, null, null, null, null, null, null,
+                DiscountScope.CATEGORY, List.of())))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("at least one");
+        }
+
+        @Test
+        @DisplayName("an order-wide code carrying ids is refused too")
+        void orderWideWithIds() {
+            // The same mistake from the other side: the ids look meaningful and are ignored.
+            assertThatThrownBy(() -> discountService.create(new DiscountCodeRequest("X", null,
+                DiscountType.FIXED, 1L, null, null, null, null, null, null, null,
+                DiscountScope.ORDER, List.of(5L))))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("cannot be limited");
+        }
+
+        @Test
+        @DisplayName("a scope round-trips through create")
+        void scopeIsStored() {
+            when(discountCodeRepository.findByCodeIgnoreCase("X")).thenReturn(Optional.empty());
+            when(discountCodeRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+            DiscountCodeResponse created = discountService.create(new DiscountCodeRequest("X", null,
+                DiscountType.PERCENTAGE, 20L, null, null, null, null, null, null, null,
+                DiscountScope.CATEGORY, List.of(SHOES)));
+
+            assertThat(created.scope()).isEqualTo(DiscountScope.CATEGORY);
+            assertThat(created.scopeIds()).containsExactly(SHOES);
         }
 
         @Test

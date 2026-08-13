@@ -12,6 +12,9 @@ package com.aura.order.catalog;
  *                    shopper, and only one of them might sort itself out.
  * @param unitPrice   Rial, and the authority. A cart's stored price is only ever a hint that it
  *                    has changed.
+ * @param categoryPath the line's category and every ancestor of it, root first. Carried so a
+ *                    discount scoped to a parent category can be matched here, without this
+ *                    service holding a copy of the tree or asking catalog again per line.
  */
 public record VariantSnapshot(
     Long variantId,
@@ -23,6 +26,20 @@ public record VariantSnapshot(
     String sizeName,
     Long unitPrice,
     boolean purchasable,
-    int available
+    int available,
+    Long categoryId,
+    java.util.List<Long> categoryPath
 ) {
+
+    public VariantSnapshot {
+        // Absent rather than null when catalog is an older build that does not send it yet: a
+        // scoped code then simply matches nothing, which is the safe direction.
+        categoryPath = categoryPath == null ? java.util.List.of() : java.util.List.copyOf(categoryPath);
+    }
+
+    /** This line, in the terms a discount is judged in. */
+    public com.aura.order.discount.DiscountLine toDiscountLine(int quantity) {
+        return new com.aura.order.discount.DiscountLine(
+            productId, categoryId, categoryPath, unitPrice * quantity);
+    }
 }

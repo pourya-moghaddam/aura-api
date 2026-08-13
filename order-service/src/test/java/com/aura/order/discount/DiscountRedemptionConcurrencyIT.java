@@ -98,6 +98,11 @@ class DiscountRedemptionConcurrencyIT {
             """, Long.class, "T" + java.util.UUID.randomUUID().toString().substring(0, 12), userId);
     }
 
+    /** One order-wide line worth 100,000 — the scope is not what these tests are about. */
+    private static List<DiscountLine> basket() {
+        return List.of(new DiscountLine(1L, 2L, List.of(1L, 2L), 100_000L));
+    }
+
     /** Releases every task from a barrier so they genuinely race rather than merely interleave. */
     private <T> List<T> inParallel(List<Callable<T>> tasks) throws Exception {
         CyclicBarrier startLine = new CyclicBarrier(tasks.size());
@@ -122,7 +127,7 @@ class DiscountRedemptionConcurrencyIT {
         return () -> {
             try {
                 transactionTemplate.executeWithoutResult(status ->
-                    discountService.redeem("SAVE10", 100_000L, userId, orderId));
+                    discountService.redeem("SAVE10", basket(), userId, orderId));
                 succeeded.incrementAndGet();
             } catch (BusinessRuleException e) {
                 refused.incrementAndGet();
@@ -246,7 +251,7 @@ class DiscountRedemptionConcurrencyIT {
         long orderId = order(3L);
 
         long amount = transactionTemplate.execute(status ->
-            discountService.redeem("SAVE10", 100_000L, 3L, orderId)).amount();
+            discountService.redeem("SAVE10", basket(), 3L, orderId)).amount();
 
         DiscountRedemption redemption = discountRedemptionRepository.findByOrderId(orderId)
             .orElseThrow();

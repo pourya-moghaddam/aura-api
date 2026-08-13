@@ -30,6 +30,24 @@ public interface VariantSnapshotRepository extends Repository<ProductVariant, Lo
                p.name              AS productName,
                p.slug              AS productSlug,
                p.status            AS productStatus,
+               p.category_id       AS categoryId,
+               /*
+                * The category and every ancestor of it, root first. Sent so order-service can
+                * decide whether a discount scoped to "Clothing" covers a product filed under
+                * "Clothing > Shirts" without holding a copy of the tree or calling back per line.
+                *
+                * As a comma-separated string rather than a bigint[]: array projections through a
+                * native query depend on how the JDBC driver maps them, and a string both sides
+                * agree on cannot be got subtly wrong.
+                *
+                * No apostrophes anywhere in this comment. Spring Data scans the query for bind
+                * parameters before any database sees it, does not understand SQL comments, and
+                * reads a lone apostrophe as an unterminated string literal - which fails the
+                * whole repository at context startup, not at query time.
+                */
+               (SELECT string_agg(a.id::text, ',' ORDER BY nlevel(a.path))
+                FROM categories a
+                WHERE a.path @> pc.path) AS categoryPath,
                c.name              AS colorName,
                s.name              AS sizeName,
                v.price             AS unitPrice,
@@ -39,6 +57,7 @@ public interface VariantSnapshotRepository extends Repository<ProductVariant, Lo
                COALESCE(i.quantity_on_hand, 0) - COALESCE(i.quantity_reserved, 0) AS available
         FROM product_variants v
         JOIN products p ON p.id = v.product_id
+        JOIN categories pc ON pc.id = p.category_id
         LEFT JOIN colors c ON c.id = v.color_id
         LEFT JOIN sizes s ON s.id = v.size_id
         LEFT JOIN inventory i ON i.variant_id = v.id
@@ -63,6 +82,11 @@ public interface VariantSnapshotRepository extends Repository<ProductVariant, Lo
         String getProductSlug();
 
         String getProductStatus();
+
+        Long getCategoryId();
+
+        /** Comma-separated ancestor ids, root first, including the product's own category. */
+        String getCategoryPath();
 
         String getColorName();
 

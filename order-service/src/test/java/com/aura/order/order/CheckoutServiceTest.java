@@ -113,7 +113,7 @@ class CheckoutServiceTest {
 
     private VariantSnapshot snapshot(long price, int available, boolean purchasable) {
         return new VariantSnapshot(VARIANT, 4L, 9L, "Shirt", "shirt", "Navy", "L",
-            price, purchasable, available);
+            price, purchasable, available, 3L, List.of(1L, 3L));
     }
 
     private CheckoutRequest request(String discountCode, String idempotencyKey) {
@@ -155,7 +155,7 @@ class CheckoutServiceTest {
         void discountAppliesToGoodsNotPostage() {
             // Otherwise "50% off" quietly discounts the courier too, and the shop pays the
             // difference on every order.
-            when(discountService.redeem(anyString(), anyLong(), any(), anyLong()))
+            when(discountService.redeem(anyString(), any(), any(), anyLong()))
                 .thenReturn(new DiscountService.Redemption(5L, "SUMMER", 100_000L));
 
             OrderResponse order = checkoutService.checkout(
@@ -189,7 +189,7 @@ class CheckoutServiceTest {
         void stockIsHeldLast() {
             // The reservation is the one step that cannot be rolled back with the transaction, so
             // it goes last: anything that fails before it leaves no trace at all.
-            when(discountService.redeem(anyString(), anyLong(), any(), anyLong()))
+            when(discountService.redeem(anyString(), any(), any(), anyLong()))
                 .thenReturn(new DiscountService.Redemption(5L, "SUMMER", 1L));
 
             checkoutService.checkout(CartOwner.guest(TOKEN), request("summer", null));
@@ -197,7 +197,7 @@ class CheckoutServiceTest {
             var inOrder = org.mockito.Mockito.inOrder(
                 orderRepository, discountService, catalogGateway);
             inOrder.verify(orderRepository).saveAndFlush(any());
-            inOrder.verify(discountService).redeem(anyString(), anyLong(), any(), anyLong());
+            inOrder.verify(discountService).redeem(anyString(), any(), any(), anyLong());
             inOrder.verify(catalogGateway).reserveStock(anyLong(), any());
         }
 
@@ -213,7 +213,7 @@ class CheckoutServiceTest {
 
             verify(orderRepository, never()).saveAndFlush(any());
             verify(catalogGateway, never()).reserveStock(anyLong(), any());
-            verify(discountService, never()).redeem(anyString(), anyLong(), any(), anyLong());
+            verify(discountService, never()).redeem(anyString(), any(), any(), anyLong());
         }
 
         @Test
@@ -240,7 +240,7 @@ class CheckoutServiceTest {
             when(catalogGateway.snapshotsFor(anyCollection())).thenReturn(Map.of(
                 VARIANT, snapshot(500_000L, 0, true),
                 8L, new VariantSnapshot(8L, 5L, 9L, "Hat", "hat", null, null,
-                    100_000L, false, 4)));
+                    100_000L, false, 4, 4L, List.of(1L, 4L))));
 
             assertThatThrownBy(CheckoutServiceTest.this::checkout)
                 .hasMessageContaining("Shirt")

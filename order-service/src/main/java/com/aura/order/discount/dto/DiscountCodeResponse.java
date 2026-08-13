@@ -1,6 +1,7 @@
 package com.aura.order.discount.dto;
 
 import com.aura.order.discount.DiscountCode;
+import com.aura.order.discount.DiscountScope;
 import com.aura.order.discount.DiscountType;
 
 import java.time.OffsetDateTime;
@@ -14,6 +15,8 @@ public record DiscountCodeResponse(
     Long value,
     Long maxDiscount,
     Long minOrderTotal,
+    DiscountScope scope,
+    java.util.List<Long> scopeIds,
     Integer usageLimit,
     Integer perUserLimit,
     int timesUsed,
@@ -26,7 +29,9 @@ public record DiscountCodeResponse(
     public static DiscountCodeResponse from(DiscountCode discount) {
         return new DiscountCodeResponse(discount.getId(), discount.getCode(),
             discount.getDescription(), discount.getType(), discount.getValue(),
-            discount.getMaxDiscount(), discount.getMinOrderTotal(), discount.getUsageLimit(),
+            discount.getMaxDiscount(), discount.getMinOrderTotal(),
+            discount.getScope(), java.util.List.copyOf(discount.scopeIdSet()),
+            discount.getUsageLimit(),
             discount.getPerUserLimit(), discount.getTimesUsed(), discount.getStartsAt(),
             discount.getEndsAt(), discount.isActive(), discount.getCreatedAt());
     }

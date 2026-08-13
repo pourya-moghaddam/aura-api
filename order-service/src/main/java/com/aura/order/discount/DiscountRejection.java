@@ -20,6 +20,8 @@ public enum DiscountRejection {
     EXHAUSTED("discount-exhausted", "That code has been fully redeemed."),
     PER_USER_LIMIT("discount-per-user-limit", "You have already used that code."),
     BELOW_MINIMUM("discount-below-minimum", "Your order does not reach the minimum for that code."),
+    NOT_APPLICABLE("discount-not-applicable",
+        "That code does not apply to anything in your basket."),
     NO_EFFECT("discount-no-effect", "That code takes nothing off this order.");
 
     private final String code;

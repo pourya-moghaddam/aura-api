@@ -1,5 +1,6 @@
 package com.aura.order.discount.dto;
 
+import com.aura.order.discount.DiscountScope;
 import com.aura.order.discount.DiscountType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -8,6 +9,7 @@ import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 /**
  * @param value       percent for {@code PERCENTAGE}, Rial for {@code FIXED}
@@ -44,7 +46,13 @@ public record DiscountCodeRequest(
 
     OffsetDateTime endsAt,
 
-    Boolean isActive
+    Boolean isActive,
+
+    /** What the code applies to. Defaults to the whole order, which is what every code was before. */
+    DiscountScope scope,
+
+    /** Category or product ids, depending on the scope. Empty for an order-wide code. */
+    List<Long> scopeIds
 ) {
 
     /** Boxed and defaulted — a primitive component would make these silently mandatory. */
@@ -55,5 +63,9 @@ public record DiscountCodeRequest(
         if (isActive == null) {
             isActive = true;
         }
+        if (scope == null) {
+            scope = DiscountScope.ORDER;
+        }
+        scopeIds = scopeIds == null ? List.of() : List.copyOf(scopeIds);
     }
 }

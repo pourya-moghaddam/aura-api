@@ -149,7 +149,9 @@ public class CheckoutService {
 
         // After the order exists, because the redemption row references it - and inside this
         // transaction, so an abandoned checkout cannot spend a use of a limited code.
-        applyDiscount(order, request.discountCode(), subtotal);
+        applyDiscount(order, request.discountCode(), lines.stream()
+            .map(line -> snapshots.get(line.variantId()).toDiscountLine(line.quantity()))
+            .toList());
 
         order.setTotal(order.getSubtotal() - order.getDiscountAmount() + order.getDeliveryFee());
         order.touch();
@@ -288,12 +290,13 @@ public class CheckoutService {
             snapshot.unitPrice(), line.quantity());
     }
 
-    private void applyDiscount(Order order, String code, long subtotal) {
+    private void applyDiscount(Order order, String code,
+                               List<com.aura.order.discount.DiscountLine> discountLines) {
         if (code == null || code.isBlank()) {
             return;
         }
         DiscountService.Redemption redemption =
-            discountService.redeem(code, subtotal, order.getUserId(), order.getId());
+            discountService.redeem(code, discountLines, order.getUserId(), order.getId());
 
         order.setDiscountAmount(redemption.amount());
         order.setDiscountCode(redemption.code());

@@ -9,6 +9,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Getter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
@@ -53,6 +55,19 @@ public class DiscountCode {
 
     @Column(name = "min_order_total", nullable = false)
     private Long minOrderTotal = 0L;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private DiscountScope scope = DiscountScope.ORDER;
+
+    /**
+     * Category or product ids, depending on the scope. They belong to catalog-service, so there is
+     * nothing here for a foreign key to point at — which is exactly why they live in an array
+     * rather than a join table that would imply a guarantee this database cannot make.
+     */
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "scope_ids", nullable = false, columnDefinition = "bigint[]")
+    private Long[] scopeIds = new Long[0];
 
     /** Null means unlimited on either axis. */
     @Column(name = "usage_limit")
@@ -103,6 +118,37 @@ public class DiscountCode {
 
     public boolean hasUsesLeft() {
         return usageLimit == null || timesUsed < usageLimit;
+    }
+
+    /**
+     * The part of a basket this code applies to.
+     *
+     * <p>For an order-wide code that is the whole basket. For a scoped one it is the lines that
+     * match — "20% off shoes" against shoes and a hat takes 20% of the shoes, and anything else is
+     * the shop giving away money it never advertised.
+     *
+     * <p>Category matching walks the line's ancestor path, so a code for Clothing covers a shirt
+     * filed under Clothing → Shirts. Requiring the exact category would make a campaign stop
+     * working the moment an admin tidied the tree.
+     */
+    public long eligibleSubtotal(java.util.List<DiscountLine> lines) {
+        if (scope == DiscountScope.ORDER) {
+            return lines.stream().mapToLong(DiscountLine::lineTotal).sum();
+        }
+
+        java.util.Set<Long> ids = scopeIdSet();
+        return lines.stream()
+            .filter(line -> scope == DiscountScope.PRODUCT
+                ? ids.contains(line.productId())
+                : line.categoryPath().stream().anyMatch(ids::contains))
+            .mapToLong(DiscountLine::lineTotal)
+            .sum();
+    }
+
+    public java.util.Set<Long> scopeIdSet() {
+        return scopeIds == null
+            ? java.util.Set.of()
+            : java.util.Arrays.stream(scopeIds).collect(java.util.stream.Collectors.toSet());
     }
 
     /**

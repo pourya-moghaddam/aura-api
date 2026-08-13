@@ -5,7 +5,6 @@ import com.aura.common.security.CurrentUser;
 import com.aura.order.cart.CartOwner;
 import com.aura.order.cart.CartOwnerResolver;
 import com.aura.order.cart.CartService;
-import com.aura.order.cart.dto.CartResponse;
 import com.aura.order.discount.dto.DiscountCodeRequest;
 import com.aura.order.discount.dto.DiscountCodeResponse;
 import com.aura.order.discount.dto.DiscountQuoteRequest;
@@ -46,12 +45,11 @@ public class DiscountController {
         @Valid @RequestBody DiscountQuoteRequest request,
         HttpServletRequest httpRequest
     ) {
-        long subtotal = cartOwnerResolver.resolveExisting(httpRequest)
-            .map(cartService::view)
-            .map(CartResponse::subtotal)
-            .orElse(0L);
+        java.util.List<DiscountLine> lines = cartOwnerResolver.resolveExisting(httpRequest)
+            .map(cartService::discountLines)
+            .orElseGet(java.util.List::of);
 
-        return ResponseEntity.ok(discountService.quote(request.code(), subtotal,
+        return ResponseEntity.ok(discountService.quote(request.code(), lines,
             CurrentUser.id().orElse(null)));
     }
 
