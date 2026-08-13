@@ -28,13 +28,14 @@ import java.util.UUID;
 public class CartController {
 
     private final CartService cartService;
+    private final CartOwnerResolver cartOwnerResolver;
     private final CartProperties cartProperties;
 
     @GetMapping
     public ResponseEntity<CartResponse> view(HttpServletRequest request, HttpServletResponse response) {
         // A plain view never mints a token: a visitor who only looks should not collect a cookie,
         // and a cart row for every such visitor is a table full of empty carts.
-        return resolveExisting(request)
+        return cartOwnerResolver.resolveExisting(request)
             .map(owner -> ResponseEntity.ok(cartService.view(owner)))
             .orElseGet(() -> ResponseEntity.ok(CartResponse.empty()));
     }
@@ -45,7 +46,7 @@ public class CartController {
         HttpServletRequest httpRequest,
         HttpServletResponse httpResponse
     ) {
-        CartOwner owner = resolveOrIssue(httpRequest, httpResponse);
+        CartOwner owner = cartOwnerResolver.resolveOrIssue(httpRequest, httpResponse);
         return ResponseEntity.ok(
             cartService.addItem(owner, request.variantId(), request.quantity()));
     }
@@ -57,7 +58,7 @@ public class CartController {
         HttpServletRequest httpRequest,
         HttpServletResponse httpResponse
     ) {
-        CartOwner owner = resolveOrIssue(httpRequest, httpResponse);
+        CartOwner owner = cartOwnerResolver.resolveOrIssue(httpRequest, httpResponse);
         return ResponseEntity.ok(cartService.setQuantity(owner, variantId, request.quantity()));
     }
 
@@ -67,7 +68,7 @@ public class CartController {
         HttpServletRequest httpRequest,
         HttpServletResponse httpResponse
     ) {
-        CartOwner owner = resolveOrIssue(httpRequest, httpResponse);
+        CartOwner owner = cartOwnerResolver.resolveOrIssue(httpRequest, httpResponse);
         return ResponseEntity.ok(cartService.removeItem(owner, variantId));
     }
 
@@ -76,7 +77,7 @@ public class CartController {
         HttpServletRequest httpRequest,
         HttpServletResponse httpResponse
     ) {
-        CartOwner owner = resolveOrIssue(httpRequest, httpResponse);
+        CartOwner owner = cartOwnerResolver.resolveOrIssue(httpRequest, httpResponse);
         return ResponseEntity.ok(cartService.clear(owner));
     }
 
@@ -111,27 +112,4 @@ public class CartController {
         return ResponseEntity.ok(merged);
     }
 
-    /**
-     * Who owns the cart for this request, without creating anything.
-     *
-     * <p>A signed-in shopper's account wins over any cookie they still carry: once they have an
-     * account the cart follows the account, and a leftover guest token must not shadow it.
-     */
-    private Optional<CartOwner> resolveExisting(HttpServletRequest request) {
-        return CurrentUser.id()
-            .map(CartOwner::user)
-            .or(() -> CartTokenCookie.read(request).map(CartOwner::guest));
-    }
-
-    /**
-     * Same, but mints a guest token when there is no other identity — for the writes, where a cart
-     * has to exist for the shopper to come back to.
-     */
-    private CartOwner resolveOrIssue(HttpServletRequest request, HttpServletResponse response) {
-        return resolveExisting(request).orElseGet(() -> {
-            UUID token = UUID.randomUUID();
-            CartTokenCookie.set(response, token, cartProperties.cookieSecure());
-            return CartOwner.guest(token);
-        });
-    }
 }

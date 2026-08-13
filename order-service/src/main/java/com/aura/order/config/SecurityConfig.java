@@ -46,6 +46,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/orders/cart/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/orders/delivery-methods").permitAll()
                 .requestMatchers("/api/orders/checkout/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/orders/discounts/quote").permitAll()
                 .requestMatchers("/api/orders/payments/callback/**").permitAll()
                 // Looking an order up by its trace code is how a guest checks on it afterwards -
                 // the code is the credential, which is why it is 10 random characters and not the
