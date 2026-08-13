@@ -1,18 +1,34 @@
 package com.aura.notification.config;
 
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 import org.springframework.validation.annotation.Validated;
 
+/**
+ * @param mode {@code http} talks to sms.ir; {@code mock} accepts everything and sends nothing.
+ *             Mock is the default so a fresh checkout cannot spend money — or, worse, text a real
+ *             Iranian number that happens to be in someone's test fixture. Unlike the payment
+ *             gateway's mock, this one fails safe: the wrong setting means a shopper waits for a
+ *             code that never comes, which is loud, rather than an order marked paid for nothing.
+ */
 @Validated
 @ConfigurationProperties(prefix = "aura.notification.sms")
 public record SmsProperties(
+    @DefaultValue("mock") String mode,
     SmsIrProperties smsIr
 ) {
+
+    public boolean isMock() {
+        return "mock".equalsIgnoreCase(mode);
+    }
+
     public record SmsIrProperties(
-        @NotBlank(message = "SMS.ir API key must not be blank")
+        /*
+         * Not @NotBlank: the key is only needed in http mode, and requiring it everywhere means a
+         * developer cannot start the service without a live credential. SmsIrGateway refuses to
+         * construct without it, which puts the check where the key is actually used.
+         */
         String apiKey,
 
         /*
@@ -33,6 +49,15 @@ public record SmsProperties(
 
         @DefaultValue("/send/verify")
         String verifyPath,
+
+        /* Free text, for anything that is not a one-time code. Iranian providers keep the two
+         * apart: OTP must go through an approved template, ordinary messages must not. */
+        @DefaultValue("/send/bulk")
+        String bulkPath,
+
+        /* The sender line the account owns. Only free-text sends need one; templates use the
+         * provider's shared line. */
+        String lineNumber,
 
         @DefaultValue("OTP")
         String otpParameterName

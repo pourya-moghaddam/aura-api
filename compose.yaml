@@ -317,10 +317,14 @@ services:
     image: aura/notification-service:${TAG:-dev}
     environment:
       <<: *app-env
+      DB_NAME: notification
+      AURA_SMS_MODE: ${AURA_SMS_MODE:-mock}
       SMS_IR_API_KEY: ${SMS_IR_API_KEY:-}
       SMS_IR_OTP_TEMPLATE_ID: ${SMS_IR_OTP_TEMPLATE_ID:-}
+      SMS_IR_LINE_NUMBER: ${SMS_IR_LINE_NUMBER:-}
     # Intentionally not published: event-driven, no public API, and it spends money when called.
     depends_on:
+      postgres: {condition: service_healthy}
       kafka: {condition: service_healthy}
       discovery-service: {condition: service_healthy}
     healthcheck:

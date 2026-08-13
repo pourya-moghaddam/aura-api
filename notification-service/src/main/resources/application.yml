@@ -5,6 +5,28 @@ spring:
   application:
     name: notification-service
 
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:notification}
+    username: ${DB_USERNAME:aura}
+    password: ${DB_PASSWORD:aura}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  # See RestClientConfig: an SMS provider that accepts the connection and then stops talking would
+  # otherwise hold a consumer thread forever and stall the queue behind it.
+  http:
+    client:
+      connect-timeout: 5s
+      read-timeout: 10s
+
   cloud:
     function:
       definition: otpRequestedIn
@@ -47,6 +69,9 @@ management:
 aura:
   notification:
     sms:
+      # mock accepts everything and sends nothing. Deliberately the default: a fresh checkout must
+      # not be able to spend money or text a real number. Set to http with a key for production.
+      mode: ${AURA_SMS_MODE:mock}
       sms-ir:
         # Supplied via SMS_IR_API_KEY. Never commit a live key - the previous value in this file
         # was a working credential and should be rotated at the provider.
@@ -54,6 +79,8 @@ aura:
         otp-template-id: ${SMS_IR_OTP_TEMPLATE_ID:823095}
         base-url: ${SMS_IR_BASE_URL:https://api.sms.ir/v1}
         verify-path: "/send/verify"
+        bulk-path: "/send/bulk"
+        line-number: ${SMS_IR_LINE_NUMBER:}
         otp-parameter-name: "OTP"
   kafka:
     topics:
