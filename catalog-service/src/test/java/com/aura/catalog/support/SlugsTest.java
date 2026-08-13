@@ -45,4 +45,37 @@ class SlugsTest {
     void mixedScript() {
         assertThat(Slugs.deriveOrNull("Cotton پنبه")).isEqualTo("cotton");
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "پیراهن مردانه 123",   // Latin digits in a Persian name
+        "کتاب‌ها ۱۲۳",          // Persian digits, which fold to Latin ones
+        "123",
+        "2024",
+        "۱۲۳ ۴۵۶"
+    })
+    @DisplayName("digits alone are not a slug")
+    void digitsAreNotASlug(String input) {
+        // The case that actually bit: stripping the Persian letters leaves the number behind, so
+        // this would otherwise derive "123" - meaningless on its own, and the same slug for every
+        // Persian product whose name ends in those digits. A shop would see one product refuse
+        // another for reasons an admin cannot see from the names.
+        assertThat(Slugs.deriveOrNull(input)).isNull();
+    }
+
+    @Test
+    @DisplayName("two Persian names ending in the same digits do not collide, they both ask")
+    void persianNamesDoNotCollide() {
+        assertThat(Slugs.deriveOrNull("پیراهن مردانه 123")).isNull();
+        assertThat(Slugs.deriveOrNull("کتاب‌ها 123")).isNull();
+    }
+
+    @Test
+    @DisplayName("a Latin name with digits is unaffected")
+    void latinWithDigitsStillWorks() {
+        // The change must not cost the ordinary case anything.
+        assertThat(Slugs.deriveOrNull("Nike Air Max 90")).isEqualTo("nike-air-max-90");
+        assertThat(Slugs.deriveOrNull("iPhone 15 Pro")).isEqualTo("iphone-15-pro");
+        assertThat(Slugs.deriveOrNull("Size 42")).isEqualTo("size-42");
+    }
 }

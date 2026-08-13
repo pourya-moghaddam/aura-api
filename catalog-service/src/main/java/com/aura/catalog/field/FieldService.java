@@ -217,7 +217,7 @@ public class FieldService {
         if (derived == null) {
             throw new BusinessRuleException("slug-required",
                 "A slug could not be derived from this " + what + "'s name, which happens when the "
-                    + "name has no Latin characters. Please supply one.");
+                    + "name has no Latin letters. Please supply one.");
         }
         return derived;
     }

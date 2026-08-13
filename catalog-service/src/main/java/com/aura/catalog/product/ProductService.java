@@ -264,7 +264,7 @@ public class ProductService {
         if (slug == null) {
             throw new BusinessRuleException("slug-required",
                 "A slug could not be derived from this product's name, which happens when the name "
-                    + "has no Latin characters. Please supply one.");
+                    + "has no Latin letters. Please supply one.");
         }
 
         productRepository.findBySlug(slug)
