@@ -215,14 +215,18 @@ public class PaymentService {
      */
     @Transactional
     public int reconcile(java.time.Duration olderThan, int limit) {
-        List<Payment> stale = paymentRepository.findStale(PaymentStatus.PENDING,
+        // Authorities, not entities. Loading the payments here would put them in the persistence
+        // context, and the lock below would then hand back those same stale instances - so a
+        // payment the shopper's callback settled in between still looks pending and gets settled
+        // twice. Found by an integration test that had been passing on timing alone.
+        List<String> stale = paymentRepository.findStaleAuthorities(PaymentStatus.PENDING,
             OffsetDateTime.now().minus(olderThan), PageRequest.of(0, limit));
 
         int settled = 0;
-        for (Payment pending : stale) {
-            // Re-read under the lock: the shopper's own callback may have arrived in between, and
+        for (String authority : stale) {
+            // Read under the lock: the shopper's own callback may have arrived in between, and
             // settling the same payment twice is exactly what this is here to avoid.
-            Optional<Payment> locked = paymentRepository.lockByAuthority(pending.getAuthority());
+            Optional<Payment> locked = paymentRepository.lockByAuthority(authority);
             if (locked.isEmpty() || locked.get().isSettled()) {
                 continue;
             }
@@ -234,8 +238,7 @@ public class PaymentService {
                 }
             } catch (BusinessRuleException | ZarinpalUnavailableException e) {
                 // Still unreachable. Left pending for the next sweep rather than guessed at.
-                log.warn("Reconciliation could not settle payment {}: {}",
-                    pending.getId(), e.getMessage());
+                log.warn("Reconciliation could not settle payment {}: {}", authority, e.getMessage());
             }
         }
 

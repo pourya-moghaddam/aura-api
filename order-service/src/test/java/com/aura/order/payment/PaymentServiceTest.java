@@ -300,8 +300,8 @@ class PaymentServiceTest {
         @Test
         @DisplayName("a lost callback is settled by asking the gateway directly")
         void settlesALostCallback() {
-            when(paymentRepository.findStale(any(), any(), any()))
-                .thenReturn(java.util.List.of(payment));
+            when(paymentRepository.findStaleAuthorities(any(), any(), any()))
+                .thenReturn(java.util.List.of(AUTHORITY));
             when(zarinpalClient.verify(anyLong(), anyString())).thenReturn(verified(100));
 
             int settled = paymentService.reconcile(java.time.Duration.ofMinutes(10), 50);
@@ -312,13 +312,29 @@ class PaymentServiceTest {
         }
 
         @Test
+        @DisplayName("the sweep reads the payment under the lock, never from a stale copy")
+        void readsUnderTheLock() {
+            // The sweep must take only keys from its search and load the row under the lock. If it
+            // carried loaded entities, the persistence context would hand the same stale instance
+            // back from the lock query and a payment settled in between would be settled again -
+            // committing the stock twice. This is the shape of that fix, pinned.
+            when(paymentRepository.findStaleAuthorities(any(), any(), any()))
+                .thenReturn(java.util.List.of(AUTHORITY));
+            when(zarinpalClient.verify(anyLong(), anyString())).thenReturn(verified(100));
+
+            paymentService.reconcile(java.time.Duration.ofMinutes(10), 50);
+
+            verify(paymentRepository).lockByAuthority(AUTHORITY);
+        }
+
+        @Test
         @DisplayName("a payment the callback settled first is skipped")
         void skipsAlreadySettled() {
             // The race that actually happens: the shopper's callback and the sweep reaching the
             // same payment within the same second. The lock orders them; this check stops the
             // second doing the work twice.
-            when(paymentRepository.findStale(any(), any(), any()))
-                .thenReturn(java.util.List.of(payment));
+            when(paymentRepository.findStaleAuthorities(any(), any(), any()))
+                .thenReturn(java.util.List.of(AUTHORITY));
             payment.markPaid("201", "5022");
 
             assertThat(paymentService.reconcile(java.time.Duration.ofMinutes(10), 50)).isZero();
@@ -328,8 +344,8 @@ class PaymentServiceTest {
         @Test
         @DisplayName("a gateway still down leaves the payment for the next sweep")
         void leavesUnreachablePaymentsAlone() {
-            when(paymentRepository.findStale(any(), any(), any()))
-                .thenReturn(java.util.List.of(payment));
+            when(paymentRepository.findStaleAuthorities(any(), any(), any()))
+                .thenReturn(java.util.List.of(AUTHORITY));
             when(zarinpalClient.verify(anyLong(), anyString()))
                 .thenThrow(new ZarinpalUnavailableException("down", null));
 
@@ -343,8 +359,8 @@ class PaymentServiceTest {
             Payment second = Payment.forOrder(99L, 1_040_000L);
             second.setId(6L);
             second.setAuthority("S0000002");
-            when(paymentRepository.findStale(any(), any(), any()))
-                .thenReturn(java.util.List.of(payment, second));
+            when(paymentRepository.findStaleAuthorities(any(), any(), any()))
+                .thenReturn(java.util.List.of(AUTHORITY, "S0000002"));
             when(paymentRepository.lockByAuthority("S0000002")).thenReturn(Optional.of(second));
             when(zarinpalClient.verify(anyLong(), org.mockito.ArgumentMatchers.eq(AUTHORITY)))
                 .thenThrow(new ZarinpalUnavailableException("down", null));
@@ -357,8 +373,8 @@ class PaymentServiceTest {
         @Test
         @DisplayName("a payment the gateway says was never completed is failed and its stock released")
         void failsWhatWasNeverPaid() {
-            when(paymentRepository.findStale(any(), any(), any()))
-                .thenReturn(java.util.List.of(payment));
+            when(paymentRepository.findStaleAuthorities(any(), any(), any()))
+                .thenReturn(java.util.List.of(AUTHORITY));
             when(zarinpalClient.verify(anyLong(), anyString()))
                 .thenReturn(new ZarinpalClient.VerifyResult(-51, null, null, "Invalid", "{}"));
 

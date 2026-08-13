@@ -31,10 +31,17 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
      * Payments nobody came back from. Callbacks are lost — the browser is closed, the network
      * drops, the customer's phone rings — and the alternative to asking is a customer who paid and
      * got nothing.
+     *
+     * <p>Returns authorities rather than entities, and that is not a micro-optimisation. Loading
+     * the {@code Payment} here puts it in the persistence context; the subsequent
+     * {@link #lockByAuthority} then returns that same managed instance with its <em>stale</em>
+     * fields, so a payment the shopper's own callback settled in between still looks pending and
+     * is settled a second time — committing the stock twice. Taking only the key means the read
+     * under the lock is a real read.
      */
-    @Query("SELECT p FROM Payment p WHERE p.status = :status AND p.createdAt < :before "
+    @Query("SELECT p.authority FROM Payment p WHERE p.status = :status AND p.createdAt < :before "
         + "AND p.authority IS NOT NULL ORDER BY p.createdAt")
-    List<Payment> findStale(@Param("status") PaymentStatus status,
-                            @Param("before") OffsetDateTime before,
-                            Pageable pageable);
+    List<String> findStaleAuthorities(@Param("status") PaymentStatus status,
+                                      @Param("before") OffsetDateTime before,
+                                      Pageable pageable);
 }

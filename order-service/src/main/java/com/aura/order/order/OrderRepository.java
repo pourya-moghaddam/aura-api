@@ -20,6 +20,24 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Page<Order> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 
     /**
+     * Orders a seller has something in, newest first.
+     *
+     * <p>Paid only. An unpaid order is a shopper who may still be at their bank, and putting it on
+     * a seller's screen has them packing parcels for money that never arrives.
+     *
+     * <p>An EXISTS subquery rather than a join, so an order with three of the seller's lines
+     * appears once rather than three times — a join here silently multiplies the page.
+     */
+    @Query("""
+        SELECT o FROM Order o
+        WHERE o.paymentStatus = com.aura.order.order.PaymentStatus.PAID
+          AND EXISTS (SELECT 1 FROM OrderItem i
+                      WHERE i.orderId = o.id AND i.sellerId = :sellerId)
+        ORDER BY o.createdAt DESC
+        """)
+    Page<Order> findPaidOrdersForSeller(@Param("sellerId") long sellerId, Pageable pageable);
+
+    /**
      * Serialises two checkouts carrying the same idempotency key.
      *
      * <p>Without it both pass the "have I seen this key?" check before either writes, and the
