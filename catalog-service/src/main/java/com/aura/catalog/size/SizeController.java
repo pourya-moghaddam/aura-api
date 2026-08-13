@@ -2,7 +2,7 @@ package com.aura.catalog.size;
 
 import com.aura.catalog.size.dto.SizeRequest;
 import com.aura.catalog.size.dto.SizeResponse;
-import com.aura.common.security.CatalogAdminOnly;
+import com.aura.common.security.AdminOnly;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -29,13 +29,13 @@ public class SizeController {
     }
 
     @GetMapping("/api/control/catalog/sizes")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<List<SizeResponse>> listAll() {
         return ResponseEntity.ok(sizeService.listAll());
     }
 
     @PostMapping("/api/control/catalog/sizes")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<SizeResponse> create(@Valid @RequestBody SizeRequest request) {
         SizeResponse created = sizeService.create(request);
         return ResponseEntity.created(URI.create("/api/control/catalog/sizes/" + created.id()))
@@ -43,7 +43,7 @@ public class SizeController {
     }
 
     @PutMapping("/api/control/catalog/sizes/{id}")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<SizeResponse> update(
         @PathVariable long id,
         @Valid @RequestBody SizeRequest request
@@ -52,7 +52,7 @@ public class SizeController {
     }
 
     @DeleteMapping("/api/control/catalog/sizes/{id}")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<Void> delete(@PathVariable long id) {
         sizeService.delete(id);
         return ResponseEntity.noContent().build();

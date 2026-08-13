@@ -2,7 +2,7 @@ package com.aura.catalog.banner;
 
 import com.aura.catalog.banner.dto.BannerRequest;
 import com.aura.catalog.banner.dto.BannerResponse;
-import com.aura.common.security.CatalogAdminOnly;
+import com.aura.common.security.AdminOnly;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
@@ -32,13 +32,13 @@ public class BannerController {
     }
 
     @GetMapping("/api/control/catalog/banners")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<List<BannerResponse>> listAll() {
         return ResponseEntity.ok(bannerService.listAll());
     }
 
     @PostMapping("/api/control/catalog/banners")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<BannerResponse> create(@Valid @RequestBody BannerRequest request) {
         BannerResponse created = bannerService.create(request);
         return ResponseEntity.created(URI.create("/api/control/catalog/banners/" + created.id()))
@@ -46,7 +46,7 @@ public class BannerController {
     }
 
     @PutMapping("/api/control/catalog/banners/{id}")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<BannerResponse> update(
         @PathVariable long id,
         @Valid @RequestBody BannerRequest request
@@ -55,7 +55,7 @@ public class BannerController {
     }
 
     @DeleteMapping("/api/control/catalog/banners/{id}")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<Void> delete(@PathVariable long id) {
         bannerService.delete(id);
         return ResponseEntity.noContent().build();

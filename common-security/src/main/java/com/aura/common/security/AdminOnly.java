@@ -12,10 +12,14 @@ import java.lang.annotation.Target;
 /**
  * Requires a control-panel token belonging to an admin.
  *
- * <p>Guards the shared catalog vocabulary — categories, colours, sizes, fields, banners — which is
- * admin territory, not seller territory. A seller picks from these; only an admin defines them.
+ * <p>Guards what an admin defines and a seller merely picks from: the shared catalogue vocabulary
+ * — categories, colours, sizes, fields, banners — and the delivery methods checkout prices against.
  * {@code SUPER_ADMIN} is included because it is strictly more privileged, not because the two roles
  * are interchangeable.
+ *
+ * <p>Named for the role rather than a domain. It was {@code CatalogAdminOnly} while catalog was
+ * the only thing it guarded, which read as though the rule were catalog-specific; it never was, and
+ * the name was about to cause a second identical annotation to be written for order-service.
  *
  * <p>One combined expression rather than {@link ControlPanelOnly} plus a separate
  * {@code @PreAuthorize} on the same element. Spring Security permits exactly one
@@ -32,5 +36,5 @@ import java.lang.annotation.Target;
 @Inherited
 @Documented
 @PreAuthorize("hasAuthority('AUD_control') and (hasRole('ADMIN') or hasRole('SUPER_ADMIN'))")
-public @interface CatalogAdminOnly {
+public @interface AdminOnly {
 }

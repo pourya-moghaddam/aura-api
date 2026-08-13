@@ -4,7 +4,7 @@ import com.aura.catalog.field.dto.FieldRequest;
 import com.aura.catalog.field.dto.FieldResponse;
 import com.aura.catalog.field.dto.FieldValueRequest;
 import com.aura.catalog.field.dto.FieldValueResponse;
-import com.aura.common.security.CatalogAdminOnly;
+import com.aura.common.security.AdminOnly;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -34,13 +34,13 @@ public class FieldController {
      * edit from here.
      */
     @GetMapping("/api/control/catalog/categories/{categoryId}/fields")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<List<FieldResponse>> listOwned(@PathVariable long categoryId) {
         return ResponseEntity.ok(fieldService.listOwnedBy(categoryId));
     }
 
     @PostMapping("/api/control/catalog/fields")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<FieldResponse> create(@Valid @RequestBody FieldRequest request) {
         FieldResponse created = fieldService.create(request);
         return ResponseEntity.created(URI.create("/api/control/catalog/fields/" + created.id()))
@@ -48,7 +48,7 @@ public class FieldController {
     }
 
     @PutMapping("/api/control/catalog/fields/{id}")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<FieldResponse> update(
         @PathVariable long id,
         @Valid @RequestBody FieldRequest request
@@ -57,7 +57,7 @@ public class FieldController {
     }
 
     @DeleteMapping("/api/control/catalog/fields/{id}")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<Void> delete(@PathVariable long id) {
         fieldService.delete(id);
         return ResponseEntity.noContent().build();
@@ -69,7 +69,7 @@ public class FieldController {
     }
 
     @PostMapping("/api/control/catalog/fields/{fieldId}/values")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<FieldValueResponse> addValue(
         @PathVariable long fieldId,
         @Valid @RequestBody FieldValueRequest request
@@ -81,7 +81,7 @@ public class FieldController {
     }
 
     @DeleteMapping("/api/control/catalog/fields/{fieldId}/values/{valueId}")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<Void> deleteValue(
         @PathVariable long fieldId,
         @PathVariable long valueId

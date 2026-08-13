@@ -2,7 +2,7 @@ package com.aura.catalog.color;
 
 import com.aura.catalog.color.dto.ColorRequest;
 import com.aura.catalog.color.dto.ColorResponse;
-import com.aura.common.security.CatalogAdminOnly;
+import com.aura.common.security.AdminOnly;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -28,13 +28,13 @@ public class ColorController {
 
     /** Admin listing includes retired colours, which the public one deliberately hides. */
     @GetMapping("/api/control/catalog/colors")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<List<ColorResponse>> listAll() {
         return ResponseEntity.ok(colorService.listAll());
     }
 
     @PostMapping("/api/control/catalog/colors")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<ColorResponse> create(@Valid @RequestBody ColorRequest request) {
         ColorResponse created = colorService.create(request);
         return ResponseEntity.created(URI.create("/api/control/catalog/colors/" + created.id()))
@@ -42,7 +42,7 @@ public class ColorController {
     }
 
     @PutMapping("/api/control/catalog/colors/{id}")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<ColorResponse> update(
         @PathVariable long id,
         @Valid @RequestBody ColorRequest request
@@ -51,7 +51,7 @@ public class ColorController {
     }
 
     @DeleteMapping("/api/control/catalog/colors/{id}")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<Void> delete(@PathVariable long id) {
         colorService.delete(id);
         return ResponseEntity.noContent().build();

@@ -2,7 +2,7 @@ package com.aura.catalog.category;
 
 import com.aura.catalog.category.dto.CategoryRequest;
 import com.aura.catalog.category.dto.CategoryResponse;
-import com.aura.common.security.CatalogAdminOnly;
+import com.aura.common.security.AdminOnly;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -45,7 +45,7 @@ public class CategoryController {
     // --- control panel (ADMIN) -----------------------------------------------------------------
 
     @PostMapping("/api/control/catalog/categories")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<CategoryResponse> create(@Valid @RequestBody CategoryRequest request) {
         CategoryResponse created = categoryService.create(request);
         return ResponseEntity.created(URI.create("/api/catalog/categories/" + created.slug()))
@@ -53,7 +53,7 @@ public class CategoryController {
     }
 
     @PutMapping("/api/control/catalog/categories/{id}")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<CategoryResponse> update(
         @PathVariable long id,
         @Valid @RequestBody CategoryRequest request
@@ -62,7 +62,7 @@ public class CategoryController {
     }
 
     @DeleteMapping("/api/control/catalog/categories/{id}")
-    @CatalogAdminOnly
+    @AdminOnly
     public ResponseEntity<Void> delete(@PathVariable long id) {
         categoryService.delete(id);
         return ResponseEntity.noContent().build();
