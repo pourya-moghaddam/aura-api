@@ -41,6 +41,7 @@ COPY common-web/pom.xml common-web/
 COPY common-security/pom.xml common-security/
 COPY auth-service/pom.xml auth-service/
 COPY catalog-service/pom.xml catalog-service/
+COPY order-service/pom.xml order-service/
 COPY media-service/pom.xml media-service/
 COPY notification-service/pom.xml notification-service/
 COPY discovery-service/pom.xml discovery-service/

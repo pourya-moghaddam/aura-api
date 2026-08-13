@@ -219,6 +219,33 @@ services:
       retries: 12
       start_period: 40s
 
+  order-service:
+    <<: *service-defaults
+    build:
+      context: .
+      args:
+        SERVICE: order-service
+    image: aura/order-service:${TAG:-dev}
+    environment:
+      <<: *app-env
+      DB_NAME: orders
+      AURA_CATALOG_BASE_URL: http://catalog-service:8083
+      AURA_INTERNAL_API_KEY: ${AURA_INTERNAL_API_KEY:?set AURA_INTERNAL_API_KEY in .env}
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      discovery-service: {condition: service_healthy}
+      # Checkout holds stock through catalog's internal API, so it cannot complete without it.
+      catalog-service: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8082/actuator/health/readiness || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
   media-service:
     <<: *service-defaults
     build:

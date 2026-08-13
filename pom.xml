@@ -53,6 +53,7 @@
         <module>auth-service</module>
         <module>notification-service</module>
         <module>catalog-service</module>
+        <module>order-service</module>
         <module>media-service</module>
         <module>discovery-service</module>
         <module>gateway-service</module>

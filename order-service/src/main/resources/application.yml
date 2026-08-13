@@ -1,0 +1,80 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: order-service
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:orders}
+    username: ${DB_USERNAME:aura}
+    password: ${DB_PASSWORD:aura}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      # Flyway owns the schema; Hibernate only checks that the entities agree with it. A CHAR(n)
+      # column against a varchar mapping has crash-looped two services in this project already,
+      # and validation is what turns that into a startup failure rather than a runtime surprise.
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  cloud:
+    stream:
+      bindings:
+        orderItemStatusChangedOut-out-0:
+          destination: ${aura.kafka.topics.order-item-status-changed:aura.order.item-status-changed.v1}
+          producer:
+            # Keyed by order, so a buyer's notifications about one order stay in the sequence they
+            # happened rather than arriving out of order across partitions.
+            partition-key-expression: headers['partitionKey']
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+aura:
+  order:
+    catalog:
+      # Direct, not through the gateway: checkout holds stock inside its own transaction, and
+      # routing that internally through the edge adds a hop and a second thing that can be down.
+      base-url: ${AURA_CATALOG_BASE_URL:http://localhost:8083}
+      # Shared secret for catalog's /api/internal/** stock endpoints. Guest checkout means there
+      # may be no user token at all, so this is what authenticates the service rather than a
+      # borrowed identity.
+      internal-api-key: ${AURA_INTERNAL_API_KEY:}
+    cart:
+      # How long an abandoned guest cart is kept before the sweep removes it. Generous, because a
+      # cart is business data and someone coming back a fortnight later is ordinary.
+      guest-retention: ${AURA_GUEST_CART_RETENTION:P30D}
+      cookie-secure: ${AURA_COOKIE_SECURE:false}
+
+  security:
+    jwt:
+      jwk-set-uri: ${AURA_JWKS_URI:http://localhost:8081/api/auth/.well-known/jwks.json}
+      issuer: ${AURA_TOKEN_ISSUER:http://localhost:8081}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.aura: DEBUG

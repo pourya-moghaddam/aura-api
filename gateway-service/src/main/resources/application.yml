@@ -54,6 +54,31 @@ spring:
                     redis-rate-limiter.replenishRate: 20
                     redis-rate-limiter.burstCapacity: 40
 
+            - id: order-service
+              uri: lb://ORDER-SERVICE
+              predicates:
+                # Anonymous by design: requirement 12 makes guests first-class buyers, so cart and
+                # checkout carry no audience requirement. What protects a guest's cart is the
+                # unguessable token in their cookie, not a token.
+                - Path=/api/orders/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@ipKeyResolver}"
+                    redis-rate-limiter.replenishRate: 20
+                    redis-rate-limiter.burstCapacity: 40
+
+            - id: order-service-control
+              uri: lb://ORDER-SERVICE
+              predicates:
+                - Path=/api/control/orders/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@userKeyResolver}"
+                    redis-rate-limiter.replenishRate: 20
+                    redis-rate-limiter.burstCapacity: 40
+
             - id: media-service
               uri: lb://MEDIA-SERVICE
               predicates:

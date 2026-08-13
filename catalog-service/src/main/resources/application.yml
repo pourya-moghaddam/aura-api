@@ -13,10 +13,9 @@ spring:
 
   jpa:
     hibernate:
-      # NOTE: this currently fails at startup - the Product entity maps a `price` column that the
-      # V1 migration does not create (price belongs on product_variants). Catalog's schema and
-      # entities are rebuilt together in Phase 3; leaving validation on so the mismatch cannot be
-      # forgotten.
+      # Flyway owns the schema; Hibernate only checks the entities agree with it. That check has
+      # earned its place twice - CHAR(n) against a varchar mapping crash-looped this service and
+      # media-service - so it stays on.
       ddl-auto: validate
     open-in-view: false
 
