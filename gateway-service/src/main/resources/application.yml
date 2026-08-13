@@ -43,6 +43,20 @@ spring:
                     redis-rate-limiter.replenishRate: 30
                     redis-rate-limiter.burstCapacity: 60
 
+            - id: search-service
+              uri: lb://SEARCH-SERVICE
+              predicates:
+                - Path=/api/search/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@userKeyResolver}"
+                    # Higher than the catalogue's: a shopper types, and every keystroke can be a
+                    # request. Throttling as-you-type search to browsing speed makes the box feel
+                    # broken rather than protected.
+                    redis-rate-limiter.replenishRate: 60
+                    redis-rate-limiter.burstCapacity: 120
+
             - id: catalog-service-control
               uri: lb://CATALOG-SERVICE
               predicates:

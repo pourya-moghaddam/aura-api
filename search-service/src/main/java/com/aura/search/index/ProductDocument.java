@@ -38,6 +38,9 @@ public record ProductDocument(
     Map<String, List<String>> attributes,
     String primaryMediaId,
 
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
+    Instant createdAt,
+
     /*
      * ISO-8601, pinned rather than left to the mapper. Jackson's default for an Instant is a
      * decimal epoch, which Elasticsearch rejects outright for a date field - and the only reason
@@ -68,6 +71,7 @@ public record ProductDocument(
             event.sizeNames(),
             event.attributes(),
             event.primaryMediaId() == null ? null : event.primaryMediaId().toString(),
+            event.createdAt(),
             event.occurredAt());
     }
 

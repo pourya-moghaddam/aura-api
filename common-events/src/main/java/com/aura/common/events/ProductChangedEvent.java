@@ -48,6 +48,12 @@ public record ProductChangedEvent(
     List<String> colorNames,
     List<String> sizeNames,
     UUID primaryMediaId,
+    /**
+     * When the product was first listed. Distinct from {@code version}, which tracks edits — a
+     * "newest first" sort built on the latter would put a corrected typo above a product listed
+     * this morning.
+     */
+    java.time.Instant createdAt,
     long version,
     boolean deleted
 ) implements DomainEvent {

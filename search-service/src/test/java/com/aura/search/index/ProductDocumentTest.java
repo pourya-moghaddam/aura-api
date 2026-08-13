@@ -27,7 +27,7 @@ class ProductDocumentTest {
             "ACTIVE", 500_000L, 900_000L, totalStock,
             Map.of("material", List.of("Cotton")),
             List.of("Navy"), List.of("L"),
-            mediaId, 1_700_000_000_000L, false);
+            mediaId, Instant.parse("2026-01-01T00:00:00Z"), 1_700_000_000_000L, false);
     }
 
     @Test

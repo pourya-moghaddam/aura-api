@@ -158,7 +158,8 @@ class OutboxPublisherTest {
             List.of("Clothing", "Shirts"),
             "Oxford Shirt", "oxford-shirt", "A shirt", "ACTIVE", 250_000L, 250_000L, 4,
             Map.of("material", List.of("cotton")), List.of("Navy"), List.of("L"),
-            UUID.randomUUID(), 1_700_000_000_000L, false);
+            UUID.randomUUID(), Instant.parse("2026-01-01T00:00:00Z"),
+            1_700_000_000_000L, false);
 
         writer.write(Topics.PRODUCT_CHANGED, event.partitionKey(), event);
 

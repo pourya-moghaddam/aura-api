@@ -83,6 +83,7 @@ public class ProductEventPublisher {
             colourNames(variants),
             sizeNames(variants),
             primaryMediaId(product.getId()),
+            product.getCreatedAt() == null ? null : product.getCreatedAt().toInstant(),
             // updated_at as epoch millis, used as an external version so a redelivered older
             // document cannot overwrite a newer one.
             product.getUpdatedAt() == null ? 0L : product.getUpdatedAt().toInstant().toEpochMilli(),
