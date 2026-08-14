@@ -1,0 +1,34 @@
+# Tempo, single binary, local storage.
+#
+# Sized for one host. Traces are the most voluminous telemetry the stack produces and the least
+# often read, so they are kept briefly and on local disk rather than shipped anywhere.
+
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        # HTTP only. The services export over OTLP/HTTP, and an open gRPC port that nothing uses is
+        # a listener to keep patched for no benefit.
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  # How long a trace can stay open before it is flushed. Longer than any request this shop serves,
+  # so a slow checkout is still written as one trace rather than two halves.
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    # A day. Long enough to investigate yesterday's incident, short enough that a laptop survives.
+    block_retention: 24h
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/blocks
+    wal:
+      path: /var/tempo/wal

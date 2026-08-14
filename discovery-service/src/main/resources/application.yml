@@ -23,6 +23,9 @@ management:
   # every service's security config. It also means the gateway cannot route to it by accident.
   server:
     port: 9091
+  # No tracing here on purpose: nothing traces *through* a service registry.
+  # Services call Eureka out of band to look up addresses, so its spans would be
+  # tens of thousands of heartbeats a day that correlate with nothing.
   metrics:
     distribution:
       # Without this Micrometer publishes only a count and a sum for request timings, so any

@@ -25,6 +25,12 @@ spring:
 
   cloud:
     stream:
+      kafka:
+        binder:
+          # Without this a trace stops dead at the producer: the span context is never written
+          # into the message headers, and the consumer starts a fresh trace with no idea what
+          # caused it. Checkout and the SMS it triggers then read as two unrelated stories.
+          enable-observation: true
       bindings:
         orderItemStatusChangedOut-out-0:
           destination: ${aura.kafka.topics.order-item-status-changed:aura.order.item-status-changed.v1}
@@ -99,6 +105,27 @@ management:
   # every service's security config. It also means the gateway cannot route to it by accident.
   server:
     port: 9091
+  observations:
+    enable:
+      # Spring Security emits a span per filter chain, per authorize call, per secured request -
+      # six of the twenty-four spans in a checkout trace, none of which say anything about the
+      # checkout. Worse, suppressing an actuator request's *server* span leaves these behind as
+      # orphans, so Tempo lists them as separate root traces and the trace list fills with
+      # "security filterchain before" from monitoring traffic nobody asked to trace.
+      spring.security: false
+  tracing:
+    sampling:
+      # Everything, in development, because a trace you did not sample is the one you wanted.
+      # compose.prod.yaml turns this down: at real traffic the cost is not the sampling, it is
+      # storing and searching what was sampled.
+      probability: ${AURA_TRACING_SAMPLE_RATE:1.0}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          # Tempo. Grafana reads from it, so a trace and the dashboards that led you to it live in
+          # the same place.
+          endpoint: ${AURA_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
   metrics:
     distribution:
       # Without this Micrometer publishes only a count and a sum for request timings, so any

@@ -25,6 +25,7 @@ x-app-env: &app-env
   DB_PASSWORD: ${POSTGRES_PASSWORD:-aura}
   REDIS_HOST: redis
   REDIS_PORT: "6379"
+  AURA_OTLP_ENDPOINT: http://tempo:4318/v1/traces
   KAFKA_BOOTSTRAP_SERVERS: kafka:9092
   EUREKA_URL: http://discovery-service:8761/eureka/
   AURA_JWKS_URI: http://auth-service:8081/api/auth/.well-known/jwks.json
@@ -363,6 +364,22 @@ services:
   # can open them, but nothing they talk to is: every service's actuator lives on 9091, which no
   # service publishes.
   # ---------------------------------------------------------------------------------------------
+  tempo:
+    image: grafana/tempo:2.7.1
+    restart: unless-stopped
+    networks: [aura]
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./docker/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    # Not published. Nothing outside the network sends traces, and Grafana is how they are read.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:3200/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
   prometheus:
     image: prom/prometheus:v3.1.0
     restart: unless-stopped
@@ -402,6 +419,7 @@ services:
     ports: ["3000:3000"]
     depends_on:
       prometheus: {condition: service_healthy}
+      tempo: {condition: service_healthy}
 
 networks:
   aura:
@@ -415,3 +433,4 @@ volumes:
   minio_data:
   prometheus_data:
   grafana_data:
+  tempo_data:

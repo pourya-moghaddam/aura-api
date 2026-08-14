@@ -2,8 +2,10 @@ package com.aura.common.web;
 
 import com.aura.common.web.correlation.CorrelationIdFilter;
 import com.aura.common.web.error.GlobalExceptionHandler;
+import com.aura.common.web.observation.ActuatorObservationPredicate;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 
@@ -29,5 +31,17 @@ public class AuraWebAutoConfiguration {
     @ConditionalOnMissingBean
     public GlobalExceptionHandler globalExceptionHandler() {
         return new GlobalExceptionHandler();
+    }
+
+    /**
+     * Conditional on the class, because common-web is also on the classpath of services that do
+     * not pull in observation at all - and a bean referring to a missing type fails the whole
+     * context rather than the one feature.
+     */
+    @Bean
+    @ConditionalOnClass(name = "io.micrometer.observation.ObservationPredicate")
+    @ConditionalOnMissingBean
+    public ActuatorObservationPredicate actuatorObservationPredicate() {
+        return new ActuatorObservationPredicate();
     }
 }

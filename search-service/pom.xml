@@ -66,6 +66,26 @@
             <artifactId>micrometer-registry-prometheus</artifactId>
             <scope>runtime</scope>
         </dependency>
+
+        <!--
+          Micrometer Tracing over OpenTelemetry, exported as OTLP. Spring Cloud Sleuth is gone;
+          this is its replacement (see plan §1.6).
+
+          micrometer-registry-otlp is excluded deliberately. The starter drags it in for OTLP
+          *metrics*, which Boot then auto-configures to push to localhost:4318 every step - this
+          project scrapes Prometheus instead, so it would be a connection error per minute per
+          service, forever, reporting a problem that does not exist.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-opentelemetry</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>io.micrometer</groupId>
+                    <artifactId>micrometer-registry-otlp</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
         <!-- Backs the trending lists, which are recomputed rather than stored. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -158,6 +158,9 @@ services:
   gateway-service:
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      # A tenth of requests. Tracing every one of them at real traffic costs more in storage and
+      # query time than it returns - and the tail you are hunting shows up in a 10% sample anyway.
+      AURA_TRACING_SAMPLE_RATE: ${AURA_TRACING_SAMPLE_RATE:-0.1}
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
     # Bound to loopback: Nginx terminates TLS on the host and proxies to it. Publishing 0.0.0.0
     # here would expose the gateway directly, bypassing TLS and the X-Forwarded-For rewrite that
@@ -168,6 +171,13 @@ services:
       resources:
         limits:
           memory: 768M
+
+  tempo:
+    ports: !override []
+    deploy:
+      resources:
+        limits:
+          memory: 1G
 
   prometheus:
     # Not published. Metrics describe the business - order rates, revenue shape, error spikes -
