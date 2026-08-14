@@ -67,6 +67,11 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+      # Off in production. The description lists every control endpoint the shop has, which is
+      # a map of the admin surface handed to anyone who asks; and the UI will happily send
+      # requests, so it is also a console. Generate it from a non-production environment.
+      SPRINGDOC_API_DOCS_ENABLED: "false"
+      SPRINGDOC_SWAGGER_UI_ENABLED: "false"
       AURA_AUTH_TOKEN_RSA_PRIVATE_KEY_PEM: ${AURA_AUTH_TOKEN_RSA_PRIVATE_KEY_PEM:?signing key required}
       AURA_AUTH_TOKEN_RSA_PUBLIC_KEY_PEM: ${AURA_AUTH_TOKEN_RSA_PUBLIC_KEY_PEM:?signing key required}
       AURA_SUPERADMIN_PHONE: ${AURA_SUPERADMIN_PHONE:?bootstrap super admin phone required}
@@ -81,6 +86,11 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+      # Off in production. The description lists every control endpoint the shop has, which is
+      # a map of the admin surface handed to anyone who asks; and the UI will happily send
+      # requests, so it is also a console. Generate it from a non-production environment.
+      SPRINGDOC_API_DOCS_ENABLED: "false"
+      SPRINGDOC_SWAGGER_UI_ENABLED: "false"
     deploy:
       resources:
         limits:
@@ -91,6 +101,11 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+      # Off in production. The description lists every control endpoint the shop has, which is
+      # a map of the admin surface handed to anyone who asks; and the UI will happily send
+      # requests, so it is also a console. Generate it from a non-production environment.
+      SPRINGDOC_API_DOCS_ENABLED: "false"
+      SPRINGDOC_SWAGGER_UI_ENABLED: "false"
       # The single most dangerous default in the codebase. In mock mode every payment is treated
       # as successful and stock is committed for nothing - the shop gives goods away and never
       # learns. Required rather than defaulted, so a missing value stops the deploy.
@@ -111,6 +126,11 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+      # Off in production. The description lists every control endpoint the shop has, which is
+      # a map of the admin surface handed to anyone who asks; and the UI will happily send
+      # requests, so it is also a console. Generate it from a non-production environment.
+      SPRINGDOC_API_DOCS_ENABLED: "false"
+      SPRINGDOC_SWAGGER_UI_ENABLED: "false"
       # "none" accepts every upload unscanned. A shop that lets sellers upload files serves them
       # back to shoppers, so this is a malware distribution channel until a scanner is in front.
       MEDIA_SCAN_PROVIDER: ${MEDIA_SCAN_PROVIDER:?must be "clamav" in production}
@@ -129,6 +149,11 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+      # Off in production. The description lists every control endpoint the shop has, which is
+      # a map of the admin surface handed to anyone who asks; and the UI will happily send
+      # requests, so it is also a console. Generate it from a non-production environment.
+      SPRINGDOC_API_DOCS_ENABLED: "false"
+      SPRINGDOC_SWAGGER_UI_ENABLED: "false"
       # Elasticsearch runs with security on above, so the client has to authenticate. Without
       # these every call is a 401 - including the index bootstrap at startup, which means the
       # service reports healthy while search returns nothing at all.
@@ -162,6 +187,11 @@ services:
       # query time than it returns - and the tail you are hunting shows up in a 10% sample anyway.
       AURA_TRACING_SAMPLE_RATE: ${AURA_TRACING_SAMPLE_RATE:-0.1}
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+      # Off in production. The description lists every control endpoint the shop has, which is
+      # a map of the admin surface handed to anyone who asks; and the UI will happily send
+      # requests, so it is also a console. Generate it from a non-production environment.
+      SPRINGDOC_API_DOCS_ENABLED: "false"
+      SPRINGDOC_SWAGGER_UI_ENABLED: "false"
     # Bound to loopback: Nginx terminates TLS on the host and proxies to it. Publishing 0.0.0.0
     # here would expose the gateway directly, bypassing TLS and the X-Forwarded-For rewrite that
     # the rate limiter depends on.

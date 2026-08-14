@@ -18,6 +18,41 @@ spring:
       server:
         webflux:
           routes:
+            # The API descriptions, gathered behind one origin. Without these the browser
+            # fetches each service's document from its own port, which is both a CORS problem and
+            # a set of addresses that do not exist in production, where nothing but the gateway is
+            # published.
+            - id: auth-docs
+              uri: lb://AUTH-SERVICE
+              predicates:
+                - Path=/api-docs/auth
+              filters:
+                - SetPath=/v3/api-docs
+            - id: catalog-docs
+              uri: lb://CATALOG-SERVICE
+              predicates:
+                - Path=/api-docs/catalog
+              filters:
+                - SetPath=/v3/api-docs
+            - id: order-docs
+              uri: lb://ORDER-SERVICE
+              predicates:
+                - Path=/api-docs/order
+              filters:
+                - SetPath=/v3/api-docs
+            - id: media-docs
+              uri: lb://MEDIA-SERVICE
+              predicates:
+                - Path=/api-docs/media
+              filters:
+                - SetPath=/v3/api-docs
+            - id: search-docs
+              uri: lb://SEARCH-SERVICE
+              predicates:
+                - Path=/api-docs/search
+              filters:
+                - SetPath=/v3/api-docs
+
             - id: auth-service
               uri: lb://AUTH-SERVICE
               predicates:
@@ -121,6 +156,24 @@ aura:
     jwt:
       jwk-set-uri: ${AURA_JWKS_URI:http://localhost:8081/api/auth/.well-known/jwks.json}
       issuer: ${AURA_TOKEN_ISSUER:http://localhost:8081}
+
+springdoc:
+  # The gateway serves the page; each entry points at a route defined above. Listing them by hand
+  # rather than discovering them from Eureka, for the same reason Prometheus uses static targets:
+  # documentation that disappears when the registry hiccups is documentation you cannot trust.
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: auth-service
+        url: /api-docs/auth
+      - name: catalog-service
+        url: /api-docs/catalog
+      - name: order-service
+        url: /api-docs/order
+      - name: media-service
+        url: /api-docs/media
+      - name: search-service
+        url: /api-docs/search
 
 management:
   # Actuator moves off the application port onto its own, and that port is never published.

@@ -36,6 +36,13 @@
         <maven.enforcer.plugin.version>3.5.0</maven.enforcer.plugin.version>
         <maven.surefire.plugin.version>3.5.2</maven.surefire.plugin.version>
         <maven.failsafe.plugin.version>3.5.2</maven.failsafe.plugin.version>
+
+        <!--
+          The 3.x line is the one built for Spring Boot 4 - 2.x targets Boot 3 and fails on the
+          module split (it wants spring-boot-starter-validation, which no longer exists under that
+          name). Pinned here rather than per service so eight poms cannot drift apart.
+        -->
+        <springdoc.version>3.1.0</springdoc.version>
         <jacoco.plugin.version>0.8.13</jacoco.plugin.version>
         <archunit.version>1.4.1</archunit.version>
 

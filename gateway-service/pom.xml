@@ -53,6 +53,13 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- webflux, not webmvc: the gateway is reactive. -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webflux-ui</artifactId>
+            <version>${springdoc.version}</version>
+        </dependency>
+
         <!--
           Without this the `prometheus` entry in the actuator exposure list below does nothing:
           the endpoint only exists when a registry is on the classpath. It read as configured for

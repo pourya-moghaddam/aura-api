@@ -60,6 +60,19 @@
             <artifactId>micrometer-observation</artifactId>
             <scope>provided</scope>
         </dependency>
+        <!--
+          Provided, like everything else here: common-web describes the shared shape of the API but
+          does not decide which services publish one. A service opts in by adding the springdoc
+          starter, which brings this along. The starter rather than the swagger models directly,
+          because the models are not in Boot's BOM and pinning them separately is one more version
+          to keep in step with springdoc's own.
+        -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-common</artifactId>
+            <version>${springdoc.version}</version>
+            <scope>provided</scope>
+        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

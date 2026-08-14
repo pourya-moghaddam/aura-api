@@ -44,6 +44,10 @@ public class SecurityConfig {
                 // port at all: management.server.port moves it to 9091, which is never published.
                 // Permitting it here is what lets Prometheus scrape over the Docker network.
                 .requestMatchers("/actuator/**").permitAll()
+                // The API description and the page that renders it. Public in development so a
+                // frontend developer can read it without a token; compose.prod.yaml switches
+                // springdoc off entirely rather than relying on this being locked down.
+                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 // Guest checkout: cart, delivery options and the payment callback all have to work
                 // for someone with no account and no token.
                 .requestMatchers("/api/orders/cart/**").permitAll()
