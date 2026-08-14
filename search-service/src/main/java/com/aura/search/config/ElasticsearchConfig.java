@@ -5,6 +5,9 @@ import co.elastic.clients.json.jackson.JacksonJsonpMapper;
 import co.elastic.clients.transport.rest_client.RestClientTransport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.http.HttpHost;
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.elasticsearch.client.RestClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -26,11 +29,27 @@ import java.net.URI;
 @Configuration
 public class ElasticsearchConfig {
 
+    /**
+     * <p>Credentials are attached only when configured. Development runs Elasticsearch with
+     * security off and has none; production turns it on, and a client that sends none gets 401 on
+     * every call — including the index bootstrap, which fails at startup while the service still
+     * reports healthy. Search would simply return nothing, forever, with no error anyone sees.
+     */
     @Bean(destroyMethod = "close")
     public RestClient elasticsearchRestClient(SearchProperties properties) {
         URI uri = URI.create(properties.uri());
-        return RestClient.builder(new HttpHost(uri.getHost(), uri.getPort(), uri.getScheme()))
-            .build();
+        var builder = RestClient.builder(
+            new HttpHost(uri.getHost(), uri.getPort(), uri.getScheme()));
+
+        if (properties.isSecured()) {
+            BasicCredentialsProvider credentials = new BasicCredentialsProvider();
+            credentials.setCredentials(AuthScope.ANY, new UsernamePasswordCredentials(
+                properties.username(), properties.password()));
+            builder.setHttpClientConfigCallback(
+                http -> http.setDefaultCredentialsProvider(credentials));
+        }
+
+        return builder.build();
     }
 
     @Bean

@@ -41,7 +41,7 @@ class IndexBootstrapperTest {
 
     private IndexBootstrapper bootstrapper(boolean bootstrapEnabled) {
         return new IndexBootstrapper(client, new IndexDefinition(),
-            new SearchProperties("http://localhost:9200", "products", bootstrapEnabled));
+            new SearchProperties("http://localhost:9200", null, null, "products", bootstrapEnabled));
     }
 
     @BeforeEach

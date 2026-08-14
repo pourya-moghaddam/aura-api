@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SearchPropertiesTest {
 
     private final SearchProperties properties =
-        new SearchProperties("http://localhost:9200", "products", true);
+        new SearchProperties("http://localhost:9200", null, null, "products", true);
 
     @Test
     @DisplayName("an index name is the alias with a generation suffix")
@@ -25,7 +25,7 @@ class SearchPropertiesTest {
     @Test
     @DisplayName("a renamed alias carries its indices with it")
     void aliasDrivesTheIndexName() {
-        assertThat(new SearchProperties("http://es:9200", "catalogue", true).indexName(3))
+        assertThat(new SearchProperties("http://es:9200", null, null, "catalogue", true).indexName(3))
             .isEqualTo("catalogue_v3");
     }
 }

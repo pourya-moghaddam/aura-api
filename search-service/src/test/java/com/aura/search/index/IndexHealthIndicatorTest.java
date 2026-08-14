@@ -40,7 +40,7 @@ class IndexHealthIndicatorTest {
     private ElasticsearchIndicesClient indices;
 
     private final SearchProperties properties =
-        new SearchProperties("http://localhost:9200", "products", true);
+        new SearchProperties("http://localhost:9200", null, null, "products", true);
 
     private IndexHealthIndicator indicator;
 

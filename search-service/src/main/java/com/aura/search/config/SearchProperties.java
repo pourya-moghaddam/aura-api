@@ -4,8 +4,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
 /**
- * @param uri       where Elasticsearch is. No credentials here: development runs with security
- *                  off, and production supplies them through the environment.
+ * @param uri       where Elasticsearch is.
+ * @param username  basic-auth user, when the cluster has security on. Blank in development, where
+ *                  Elasticsearch runs with {@code xpack.security.enabled=false}; required in
+ *                  production, where compose.prod.yaml turns it on. Without this the client sends
+ *                  no credentials and every call comes back 401 — including the index bootstrap at
+ *                  startup, so the service comes up healthy and search is simply dead.
+ * @param password  the matching password.
  * @param alias     what everything reads and writes through. Never an index name — the whole point
  *                  of the alias is that a mapping change is a reindex into a new index and an
  *                  atomic flip, with nothing else needing to know.
@@ -16,9 +21,16 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 @ConfigurationProperties(prefix = "aura.search")
 public record SearchProperties(
     @DefaultValue("http://localhost:9200") String uri,
+    String username,
+    String password,
     @DefaultValue("products") String alias,
     @DefaultValue("true") boolean indexBootstrap
 ) {
+
+    /** Whether the cluster expects credentials. */
+    public boolean isSecured() {
+        return username != null && !username.isBlank();
+    }
 
     /**
      * The concrete index behind the alias for a given generation.

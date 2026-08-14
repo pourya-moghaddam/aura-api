@@ -56,6 +56,10 @@ eureka:
 aura:
   search:
     uri: ${ELASTICSEARCH_URI:http://localhost:9200}
+    # Empty in development, where the cluster runs with security off. compose.prod.yaml turns
+    # xpack.security on and supplies these; without them every call is a 401.
+    username: ${ELASTICSEARCH_USERNAME:}
+    password: ${ELASTICSEARCH_PASSWORD:}
     # Everything reads and writes through the alias, never an index name. That indirection is what
     # makes a mapping change a reindex-and-flip rather than downtime.
     alias: ${AURA_SEARCH_ALIAS:products}

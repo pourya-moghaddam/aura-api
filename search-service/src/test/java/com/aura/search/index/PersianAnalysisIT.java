@@ -59,7 +59,7 @@ class PersianAnalysisIT {
         client = new ElasticsearchClient(
             new RestClientTransport(restClient, new JacksonJsonpMapper(new ObjectMapper())));
 
-        SearchProperties properties = new SearchProperties(uri.toString(), ALIAS, true);
+        SearchProperties properties = new SearchProperties(uri.toString(), null, null, ALIAS, true);
         new IndexBootstrapper(client, new IndexDefinition(), properties).createIndexIfMissing();
     }
 

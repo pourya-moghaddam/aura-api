@@ -58,7 +58,7 @@ class ProductSearchIT {
             RestClient.builder(new HttpHost(uri.getHost(), uri.getPort(), "http")).build(),
             new JacksonJsonpMapper(new ObjectMapper().findAndRegisterModules())));
 
-        SearchProperties properties = new SearchProperties(uri.toString(), "products", true);
+        SearchProperties properties = new SearchProperties(uri.toString(), null, null, "products", true);
         new IndexBootstrapper(client, new IndexDefinition(), properties).createIndexIfMissing();
 
         ProductIndexer indexer = new ProductIndexer(client, properties);
