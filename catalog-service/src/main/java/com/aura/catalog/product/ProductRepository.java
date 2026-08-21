@@ -49,8 +49,24 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
      * variant and stock change, and the aggregate is exactly what the database is for. Only active
      * variants count towards price — an inactive one should not set the "from" price on a listing
      * a shopper cannot actually buy at.
+     *
+     * <p><strong>{@code clearAutomatically} is load-bearing, not tidiness.</strong> This is a bulk
+     * UPDATE issued straight to the database, so it bypasses the persistence context. Without
+     * clearing, the {@code findById} that follows in {@code ProductService#refreshDerivedFields} is
+     * answered from JPA's first-level cache and returns the entity as it was <em>before</em> this
+     * ran — old price, old stock, and an old {@code updated_at}.
+     *
+     * <p>That last one is what made it dangerous. {@code updated_at} becomes the external version
+     * on the Elasticsearch document, so the event published afterwards carried a version equal to
+     * the one already indexed, and Elasticsearch discarded it as a stale redelivery — silently, by
+     * design. The effect was that <em>stock and price changes never reached the search index at
+     * all</em>: a product that sold out went on being listed as in stock until some unrelated edit
+     * happened to touch the entity through JPA.
+     *
+     * <p>{@code flushAutomatically} is the matching half — pending changes are written before this
+     * statement runs, so the aggregate is computed over current state rather than stale state.
      */
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = """
         UPDATE products p SET
             min_price = agg.min_price,
