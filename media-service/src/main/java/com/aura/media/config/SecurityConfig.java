@@ -4,6 +4,7 @@ import com.aura.common.security.AuraJwtAuthenticationConverter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -12,11 +13,20 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
- * Everything here requires authentication.
+ * Everything here requires authentication, with exactly one exception.
  *
- * <p>Unlike catalog, there is no public read path: even fetching a file goes through a permission
- * check that then mints a short-lived signed URL. Nothing in this service is anonymously reachable,
- * which is what makes "no raw bucket paths" enforceable rather than aspirational.
+ * <p>That exception is {@code GET /api/media/{id}/content}, and it is deliberately narrow. A
+ * shopper browsing the catalogue is anonymous by design, so product photos have to be fetchable
+ * without a token; every other route in this service stays owner-scoped, including the two that
+ * publish and unpublish.
+ *
+ * <p>Permitting the path does not widen what is reachable through it. The endpoint can only resolve
+ * a file that is both {@code PUBLIC} and {@code READY}, and both conditions are in the query rather
+ * than in a check afterwards — see {@code MediaFileRepository#findByIdAndVisibilityAndStatus}. An
+ * unpublished or unscanned file 404s here exactly as an absent one does.
+ *
+ * <p>Raw bucket paths still never leave this service: the public endpoint streams the bytes rather
+ * than redirecting to storage, so the object key stays as hidden as it was before.
  */
 @Configuration
 @EnableWebSecurity
@@ -42,6 +52,15 @@ public class SecurityConfig {
                 // frontend developer can read it without a token; compose.prod.yaml switches
                 // springdoc off entirely rather than relying on this being locked down.
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                // Storefront product imagery. GET and HEAD only, named explicitly so that adding a
+                // POST or DELETE under the same path later does not silently inherit this.
+                //
+                // HEAD matters and is easy to miss: Spring MVC answers it from the same handler,
+                // but Spring Security matches on the literal method, so permitting GET alone makes
+                // every cache revalidation and every `curl -I` come back 401 while the page itself
+                // works. That asymmetry is genuinely confusing to debug.
+                .requestMatchers(HttpMethod.GET, "/api/media/*/content").permitAll()
+                .requestMatchers(HttpMethod.HEAD, "/api/media/*/content").permitAll()
                 .anyRequest().authenticated()
             )
             .oauth2ResourceServer(oauth2 -> oauth2

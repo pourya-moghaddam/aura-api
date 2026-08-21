@@ -58,6 +58,14 @@ public class MediaFile {
     @Column(nullable = false, length = 20)
     private MediaStatus status;
 
+    /**
+     * Independent of {@link #status}: a file can be public and not yet servable, or servable and
+     * private. Both have to pass before anything is written to a response.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private MediaVisibility visibility;
+
     @Column(name = "failure_reason", columnDefinition = "TEXT")
     private String failureReason;
 
@@ -80,9 +88,33 @@ public class MediaFile {
         file.declaredContentType = declaredContentType;
         file.originalFilename = originalFilename;
         file.status = MediaStatus.PENDING;
+        // Private until something explicitly publishes it. An upload nobody has attached to
+        // anything has no reason to be world-readable.
+        file.visibility = MediaVisibility.PRIVATE;
         file.createdAt = OffsetDateTime.now();
         file.updatedAt = file.createdAt;
         return file;
+    }
+
+    /**
+     * Makes the file anonymously readable.
+     *
+     * <p>Deliberately does not check {@link #status}: publishing is a statement about intent, and a
+     * file can legitimately be attached to a draft product while it is still being scanned. The
+     * status gate is enforced at read time instead, so a file published mid-scan that then fails
+     * that scan is still never served.
+     */
+    public void publish() {
+        this.visibility = MediaVisibility.PUBLIC;
+    }
+
+    public void unpublish() {
+        this.visibility = MediaVisibility.PRIVATE;
+    }
+
+    /** Both gates, together — the only question a read path should ask. */
+    public boolean isPubliclyServable() {
+        return visibility != null && visibility.isPublic() && status.isServable();
     }
 
     /** Promotion to the serving bucket: the object moved, so both location fields change with it. */

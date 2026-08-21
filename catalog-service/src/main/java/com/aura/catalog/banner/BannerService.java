@@ -99,6 +99,10 @@ public class BannerService {
                 "That file is not available. It may still be processing, may have failed the "
                     + "security scan, or may not belong to you.");
         }
+        // A banner is by definition public - it is the first thing an anonymous visitor sees on
+        // the home page - so the file has to be readable without a token, exactly as product
+        // images are.
+        mediaGateway.publish(mediaId);
     }
 
     /**

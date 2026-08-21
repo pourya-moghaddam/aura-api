@@ -16,4 +16,14 @@ public interface MediaGateway {
      *         scanning.
      */
     boolean isUsableBy(UUID mediaId);
+
+    /**
+     * Makes the file readable by anonymous visitors.
+     *
+     * <p>Called when media is attached to a product, because that is the moment the image acquires
+     * a public audience: a storefront shopper carries no token, so an owner-scoped file cannot be
+     * rendered on a product page. Until this runs, media-service serves the file to nobody but its
+     * owner.
+     */
+    void publish(UUID mediaId);
 }

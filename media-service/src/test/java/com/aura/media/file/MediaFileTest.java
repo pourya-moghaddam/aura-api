@@ -103,6 +103,53 @@ class MediaFileTest {
     }
 
     @Test
+    @DisplayName("a new upload is private, so an unattached file is never world-readable")
+    void uploadsStartPrivate() {
+        MediaFile file = MediaFile.pending(
+            UUID.randomUUID(), 1L, "aura-quarantine", "k", "image/png", "a.png");
+
+        assertThat(file.getVisibility()).isEqualTo(MediaVisibility.PRIVATE);
+        assertThat(file.isPubliclyServable()).isFalse();
+    }
+
+    @Test
+    @DisplayName("publishing alone does not make a file servable - it still has to pass scanning")
+    void publishDoesNotBypassTheScanGate() {
+        MediaFile file = MediaFile.pending(
+            UUID.randomUUID(), 1L, "aura-quarantine", "k", "image/png", "a.png");
+
+        // Attaching to a draft product publishes it while the scan is still in flight. That is
+        // allowed; serving it is not.
+        file.publish();
+
+        assertThat(file.getVisibility()).isEqualTo(MediaVisibility.PUBLIC);
+        assertThat(file.isPubliclyServable()).isFalse();
+
+        file.markQuarantined("Eicar");
+        assertThat(file.isPubliclyServable())
+            .describedAs("a published file that then fails its scan must not become servable")
+            .isFalse();
+    }
+
+    @Test
+    @DisplayName("both gates open makes a file publicly servable, and unpublish closes it again")
+    void publishedAndReadyIsServable() {
+        MediaFile file = MediaFile.pending(
+            UUID.randomUUID(), 1L, "aura-quarantine", "k", "image/png", "a.png");
+
+        file.markReady("aura-media", "k");
+        assertThat(file.isPubliclyServable())
+            .describedAs("READY alone is not enough; nothing is public until published")
+            .isFalse();
+
+        file.publish();
+        assertThat(file.isPubliclyServable()).isTrue();
+
+        file.unpublish();
+        assertThat(file.isPubliclyServable()).isFalse();
+    }
+
+    @Test
     @DisplayName("the development scanner passes everything, which is why it warns")
     void noOpScannerPassesEverything() {
         VirusScanner.ScanResult result = new NoOpVirusScanner().scan(new ByteArrayInputStream(new byte[]{1}));

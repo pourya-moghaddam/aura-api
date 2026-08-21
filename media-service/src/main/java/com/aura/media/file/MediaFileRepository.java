@@ -21,6 +21,18 @@ public interface MediaFileRepository extends JpaRepository<MediaFile, UUID> {
     List<MediaFile> findByOwnerIdOrderByCreatedAtDesc(Long ownerId);
 
     /**
+     * The one lookup that is deliberately <em>not</em> owner-scoped, because its caller is an
+     * anonymous shopper looking at a product page.
+     *
+     * <p>Both gates are in the query rather than checked afterwards in Java. That is the whole
+     * safety argument for this method existing next to {@link #findByIdAndOwnerId}: a reviewer can
+     * see that no row outside {@code PUBLIC + READY} can come back from it at all, so there is no
+     * path where a forgotten {@code if} exposes a private or unscanned file.
+     */
+    Optional<MediaFile> findByIdAndVisibilityAndStatus(
+        UUID id, MediaVisibility visibility, MediaStatus status);
+
+    /**
      * Work waiting to be picked up. {@code SKIP LOCKED} so more than one instance can run the
      * worker without both grabbing the same row and scanning it twice.
      */

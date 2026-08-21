@@ -89,6 +89,38 @@ class ProductMediaServiceTest {
     }
 
     @Test
+    @DisplayName("attaching publishes the file, or the storefront renders a broken image")
+    void attachPublishesForStorefront() {
+        ownsProduct(ProductStatus.DRAFT);
+        when(productMediaRepository.findByProductIdAndMediaId(PRODUCT_ID, mediaId))
+            .thenReturn(Optional.empty());
+        when(mediaGateway.isUsableBy(mediaId)).thenReturn(true);
+        when(productMediaRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.attach(SELLER, PRODUCT_ID, request(false));
+
+        // Shoppers carry no token, so an owner-scoped file cannot render on a product page.
+        // Without this call the product looks correct in the panel and broken on the site.
+        verify(mediaGateway).publish(mediaId);
+    }
+
+    @Test
+    @DisplayName("an unusable file is never published")
+    void unusableMediaNotPublished() {
+        ownsProduct(ProductStatus.DRAFT);
+        when(productMediaRepository.findByProductIdAndMediaId(PRODUCT_ID, mediaId))
+            .thenReturn(Optional.empty());
+        when(mediaGateway.isUsableBy(mediaId)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.attach(SELLER, PRODUCT_ID, request(false)))
+            .isInstanceOf(BusinessRuleException.class);
+
+        // Ordering matters: publishing before the usability check would leave an unscanned upload
+        // world-readable for as long as it took the attach to fail.
+        verify(mediaGateway, never()).publish(any());
+    }
+
+    @Test
     @DisplayName("a file that is not servable or not the seller's is refused")
     void unusableMediaRefused() {
         ownsProduct(ProductStatus.DRAFT);

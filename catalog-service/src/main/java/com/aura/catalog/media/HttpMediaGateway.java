@@ -64,6 +64,25 @@ public class HttpMediaGateway implements MediaGateway {
         }
     }
 
+    @Override
+    public void publish(UUID mediaId) {
+        try {
+            restClient.post()
+                .uri("/api/media/{mediaId}/publish", mediaId)
+                .header(HttpHeaders.AUTHORIZATION, currentBearerToken())
+                .retrieve()
+                .toBodilessEntity();
+
+        } catch (RestClientException e) {
+            // Fails the attach rather than being swallowed. Carrying on would produce a product
+            // that looks correctly configured in the panel and renders with broken images on the
+            // storefront - a defect nobody notices until a shopper does.
+            log.error("Could not publish media {} for storefront display", mediaId, e);
+            throw new BusinessRuleException("media-publish-failed",
+                "Could not make the attached file publicly viewable. Please try again shortly.");
+        }
+    }
+
     private String currentBearerToken() {
         RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
         if (attributes instanceof ServletRequestAttributes servletAttributes) {

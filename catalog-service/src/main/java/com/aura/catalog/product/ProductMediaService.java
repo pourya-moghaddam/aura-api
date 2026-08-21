@@ -51,6 +51,11 @@ public class ProductMediaService {
                     + "security scan, or may not belong to you.");
         }
 
+        // Attaching to a product is what gives the file a public audience, so it is published here
+        // rather than at upload time. Before this point the image is the seller's private draft;
+        // after it, a shopper with no token has to be able to render it.
+        mediaGateway.publish(request.mediaId());
+
         boolean primary = request.isPrimary() || productMediaRepository.countByProductId(productId) == 0;
         if (primary) {
             // Cleared first: uq_product_media_one_primary is a unique index, so setting the new
