@@ -205,7 +205,7 @@ class TrendingIT {
     private static ProductChangedEvent product(long id, String name, String status) {
         return new ProductChangedEvent(
             UUID.randomUUID(), Instant.now(), id, 9L, SHIRTS, List.of(1L, SHIRTS),
-            List.of("پوشاک"), name, "p" + id, "توضیحات", status, 100_000L, 100_000L, 5,
+            List.of("پوشاک"), name, "p" + id, "توضیحات", status, 100_000L, 100_000L, null, 5,
             Map.of(), List.of("Navy"), List.of("L"), null,
             Instant.parse("2026-01-01T00:00:00Z"), 1_000L + id, false);
     }

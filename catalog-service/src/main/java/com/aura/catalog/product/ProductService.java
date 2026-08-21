@@ -1,6 +1,7 @@
 package com.aura.catalog.product;
 
 import com.aura.catalog.category.CategoryService;
+import com.aura.catalog.inventory.StockAvailability;
 import com.aura.catalog.product.dto.ProductMediaResponse;
 import com.aura.catalog.product.dto.ProductRequest;
 import com.aura.catalog.product.dto.ProductResponse;
@@ -35,6 +36,7 @@ import java.util.stream.Collectors;
 public class ProductService {
 
     private final ProductRepository productRepository;
+    private final StockAvailability stockAvailability;
     private final ProductVariantRepository productVariantRepository;
     private final ProductMediaRepository productMediaRepository;
     private final ProductFieldValueRepository productFieldValueRepository;
@@ -213,14 +215,27 @@ public class ProductService {
     public void refreshDerivedFields(long productId) {
         productRepository.recomputeDerivedFields(productId);
 
-        // Re-read: the recompute ran as SQL, so the in-memory entity still holds the old figures.
+        // Genuinely re-read from the database. The recompute ran as SQL, so the in-memory entity
+        // still holds the old figures — and `clearAutomatically` on that query is what makes this
+        // findById go to the database instead of being answered from the first-level cache with
+        // exactly the stale values we are trying to replace. See ProductRepository for what that
+        // silently broke.
         productRepository.findById(productId).ifPresent(productEventPublisher::productChanged);
     }
 
     private ProductResponse withDetail(Product product) {
-        List<VariantResponse> variants =
-            productVariantRepository.findByProductIdOrderByIdAsc(product.getId()).stream()
-                .map(VariantResponse::from).toList();
+        List<ProductVariant> productVariants =
+            productVariantRepository.findByProductIdOrderByIdAsc(product.getId());
+
+        // One query for the whole variant set, not one per variant: a product with five sizes in
+        // three colours is fifteen round trips otherwise, to render a single page.
+        Map<Long, Boolean> available = stockAvailability.byVariant(
+            productVariants.stream().map(ProductVariant::getId).toList());
+
+        List<VariantResponse> variants = productVariants.stream()
+            .map(variant -> VariantResponse.from(
+                variant, Boolean.TRUE.equals(available.get(variant.getId()))))
+            .toList();
         List<ProductMediaResponse> media =
             productMediaRepository.findByProductIdOrderBySortOrderAscIdAsc(product.getId()).stream()
                 .map(ProductMediaResponse::from).toList();

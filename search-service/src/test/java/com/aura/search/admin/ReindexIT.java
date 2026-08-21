@@ -77,7 +77,7 @@ class ReindexIT {
     private ProductChangedEvent product(long id, String name, long version) {
         return new ProductChangedEvent(
             UUID.randomUUID(), Instant.now(), id, 9L, 3L, List.of(1L, 3L), List.of("پوشاک"),
-            name, "p" + id, "توضیحات", "ACTIVE", 1_000L, 1_000L, 5,
+            name, "p" + id, "توضیحات", "ACTIVE", 1_000L, 1_000L, null, 5,
             Map.of("material", List.of("Cotton")), List.of("Navy"), List.of("L"), null,
             Instant.parse("2026-01-01T00:00:00Z"), version, false);
     }

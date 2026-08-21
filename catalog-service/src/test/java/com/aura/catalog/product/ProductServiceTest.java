@@ -2,6 +2,7 @@ package com.aura.catalog.product;
 
 import com.aura.catalog.category.Category;
 import com.aura.catalog.category.CategoryService;
+import com.aura.catalog.inventory.StockAvailability;
 import com.aura.catalog.product.dto.ProductRequest;
 import com.aura.catalog.product.dto.ProductResponse;
 import com.aura.common.web.error.BusinessRuleException;
@@ -64,11 +65,14 @@ class ProductServiceTest {
     @Mock
     private CategoryService categoryService;
 
+    @Mock
+    private StockAvailability stockAvailability;
+
     private ProductService service;
 
     @BeforeEach
     void setUp() {
-        service = new ProductService(productRepository, productVariantRepository,
+        service = new ProductService(productRepository, stockAvailability, productVariantRepository,
             productMediaRepository, productFieldValueRepository, productFieldValueService,
             productEventPublisher, categoryService);
         authenticateAs(SELLER, "SELLER");

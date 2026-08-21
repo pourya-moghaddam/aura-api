@@ -43,6 +43,19 @@ public record ProductChangedEvent(
     String status,
     Long minPrice,
     Long maxPrice,
+    /**
+     * The pre-sale price of the variant that sets {@link #minPrice}, or null when that variant is
+     * not discounted.
+     *
+     * <p>Paired with {@code minPrice} rather than being an aggregate of its own. A listing card
+     * shows "from {@code minPrice}", so the struck-through figure beside it has to be the former
+     * price of <em>that same variant</em>. Taking the highest compare-at across all variants would
+     * advertise a saving against a price the shopper was never offered.
+     *
+     * <p>Null rather than equal-to-price when nothing is discounted, so "is this on sale" is a null
+     * check instead of a comparison every consumer has to remember to make.
+     */
+    Long compareAtPrice,
     Integer totalStock,
     Map<String, List<String>> attributes,
     List<String> colorNames,

@@ -87,7 +87,7 @@ class ProductIndexerIT {
             UUID.randomUUID(), Instant.now(), PRODUCT, 9L, 3L,
             List.of(1L, 3L), List.of("پوشاک", "پیراهن"),
             name, "shirt", "توضیحات", "ACTIVE",
-            500_000L, 900_000L, 7, Map.of("material", List.of("Cotton")),
+            500_000L, 900_000L, null, 7, Map.of("material", List.of("Cotton")),
             List.of("Navy"), List.of("L"), null,
             Instant.parse("2026-01-01T00:00:00Z"), version, deleted);
     }

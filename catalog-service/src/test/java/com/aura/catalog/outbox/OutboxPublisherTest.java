@@ -156,7 +156,7 @@ class OutboxPublisherTest {
         ProductChangedEvent event = new ProductChangedEvent(
             UUID.randomUUID(), Instant.now(), 42L, 7L, 5L, List.of(1L, 5L),
             List.of("Clothing", "Shirts"),
-            "Oxford Shirt", "oxford-shirt", "A shirt", "ACTIVE", 250_000L, 250_000L, 4,
+            "Oxford Shirt", "oxford-shirt", "A shirt", "ACTIVE", 250_000L, 250_000L, null, 4,
             Map.of("material", List.of("cotton")), List.of("Navy"), List.of("L"),
             UUID.randomUUID(), Instant.parse("2026-01-01T00:00:00Z"),
             1_700_000_000_000L, false);

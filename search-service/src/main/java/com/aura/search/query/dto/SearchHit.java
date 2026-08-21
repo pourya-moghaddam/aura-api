@@ -16,6 +16,13 @@ public record SearchHit(
     String slug,
     Long minPrice,
     Long maxPrice,
+    /**
+     * Pre-sale price of the variant behind {@code minPrice}, or null when it is not on sale.
+     *
+     * <p>On the card this is the struck-through figure beside "from {@code minPrice}". Without it
+     * a listing grid cannot show a sale at all — which is where a sale actually sells.
+     */
+    Long compareAtPrice,
     boolean inStock,
     String primaryMediaId,
     List<String> colorNames,
@@ -25,7 +32,8 @@ public record SearchHit(
     public static SearchHit from(ProductDocument document, Double score) {
         return new SearchHit(
             document.productId(), document.name(), document.slug(),
-            document.minPrice(), document.maxPrice(), document.inStock(),
+            document.minPrice(), document.maxPrice(), document.compareAtPrice(),
+            document.inStock(),
             document.primaryMediaId(), document.colorNames(), score);
     }
 }

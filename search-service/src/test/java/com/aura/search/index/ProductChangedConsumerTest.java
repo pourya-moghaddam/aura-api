@@ -41,7 +41,7 @@ class ProductChangedConsumerTest {
         // dead-letter hop would only add delay on the way to the same outcome.
         var noId = new com.aura.common.events.ProductChangedEvent(
             UUID.randomUUID(), Instant.now(), null, 9L, 3L, List.of(), List.of(),
-            "x", "x", null, "ACTIVE", 1L, 1L, 1, Map.of(), List.of(), List.of(),
+            "x", "x", null, "ACTIVE", 1L, 1L, null, 1, Map.of(), List.of(), List.of(),
             null, Instant.now(), 1L, false);
 
         new ProductChangedConsumer(indexer).productChanged().accept(noId);

@@ -24,7 +24,7 @@ class ProductDocumentTest {
             UUID.randomUUID(), Instant.parse("2026-08-13T10:00:00Z"),
             42L, 9L, 3L, List.of(1L, 3L), List.of("پوشاک", "پیراهن"),
             "پیراهن مردانه", "mens-shirt", "توضیحات",
-            "ACTIVE", 500_000L, 900_000L, totalStock,
+            "ACTIVE", 500_000L, 900_000L, null, totalStock,
             Map.of("material", List.of("Cotton")),
             List.of("Navy"), List.of("L"),
             mediaId, Instant.parse("2026-01-01T00:00:00Z"), 1_700_000_000_000L, false);

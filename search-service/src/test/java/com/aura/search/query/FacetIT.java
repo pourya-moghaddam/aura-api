@@ -95,7 +95,7 @@ class FacetIT {
                                                long price, boolean inStock) {
         return new ProductChangedEvent(
             UUID.randomUUID(), Instant.now(), id, 9L, categoryId, path, List.of("پوشاک"),
-            name, "p" + id, "توضیحات", "ACTIVE", price, price, inStock ? 5 : 0,
+            name, "p" + id, "توضیحات", "ACTIVE", price, price, null, inStock ? 5 : 0,
             attributes, colors, sizes, null, Instant.parse("2026-01-01T00:00:00Z"), 1_000L + id,
             false);
     }

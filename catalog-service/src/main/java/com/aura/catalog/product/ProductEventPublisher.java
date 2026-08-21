@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -78,6 +79,7 @@ public class ProductEventPublisher {
             product.getStatus().name(),
             product.getMinPrice(),
             product.getMaxPrice(),
+            compareAtOfCheapest(variants),
             product.getTotalStock(),
             product.getAttributes(),
             colourNames(variants),
@@ -90,6 +92,36 @@ public class ProductEventPublisher {
             deleted);
 
         outboxWriter.write(Topics.PRODUCT_CHANGED, event.partitionKey(), event);
+    }
+
+    /**
+     * The pre-sale price to show beside the listing's "from" price, or null when it is not on sale.
+     *
+     * <p>Taken from the <em>cheapest active variant</em>, because that is the one whose price the
+     * card displays. Using the largest compare-at across all variants would produce a bigger and
+     * more flattering discount against a price the shopper cannot buy at — which is the sort of
+     * thing that is indistinguishable from deliberate.
+     *
+     * <p>Only active variants are considered, matching {@code recomputeDerivedFields}: an inactive
+     * variant does not set the listing price, so it must not set the price struck through beside
+     * it either.
+     *
+     * <p>Null unless the compare-at is genuinely higher than the price. A seller who sets them
+     * equal, or sets a compare-at below the price, is not running a sale, and rendering "٪۰ off"
+     * or a negative discount is worse than rendering nothing.
+     */
+    private Long compareAtOfCheapest(List<ProductVariant> variants) {
+        return variants.stream()
+            .filter(ProductVariant::isActive)
+            .filter(variant -> variant.getPrice() != null)
+            .min(Comparator.comparing(ProductVariant::getPrice))
+            // Compared against that variant's own price, not merely checked for being positive:
+            // a compare-at equal to or below the price is not a discount, and letting it through
+            // renders a "0% off" badge or a negative one.
+            .filter(variant -> variant.getCompareAtPrice() != null
+                && variant.getCompareAtPrice() > variant.getPrice())
+            .map(ProductVariant::getCompareAtPrice)
+            .orElse(null);
     }
 
     /**

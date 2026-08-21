@@ -3,6 +3,7 @@ package com.aura.catalog.product;
 import com.aura.catalog.color.ColorService;
 import com.aura.catalog.inventory.Inventory;
 import com.aura.catalog.inventory.InventoryRepository;
+import com.aura.catalog.inventory.StockAvailability;
 import com.aura.catalog.product.dto.VariantRequest;
 import com.aura.catalog.product.dto.VariantResponse;
 import com.aura.catalog.size.SizeService;
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 
 /**
@@ -29,6 +31,7 @@ public class ProductVariantService {
 
     private final ProductVariantRepository productVariantRepository;
     private final InventoryRepository inventoryRepository;
+    private final StockAvailability stockAvailability;
     private final ProductService productService;
     private final ColorService colorService;
     private final SizeService sizeService;
@@ -36,8 +39,16 @@ public class ProductVariantService {
     @Transactional(readOnly = true)
     public List<VariantResponse> listFor(long userId, long productId) {
         productService.requireOwned(userId, productId);
-        return productVariantRepository.findByProductIdOrderByIdAsc(productId).stream()
-            .map(VariantResponse::from).toList();
+
+        List<ProductVariant> variants = productVariantRepository.findByProductIdOrderByIdAsc(productId);
+        // One lookup for the set rather than one per variant.
+        Map<Long, Boolean> available =
+            stockAvailability.byVariant(variants.stream().map(ProductVariant::getId).toList());
+
+        return variants.stream()
+            .map(variant -> VariantResponse.from(
+                variant, Boolean.TRUE.equals(available.get(variant.getId()))))
+            .toList();
     }
 
     @Transactional
@@ -61,7 +72,9 @@ public class ProductVariantService {
         // to publish with no inventory behind them.
         inventoryRepository.save(Inventory.forVariant(saved.getId(), 0));
 
-        VariantResponse response = VariantResponse.from(saved);
+        // Not available, and no query needed to know it: the inventory row was just created at
+        // zero on the line above.
+        VariantResponse response = VariantResponse.from(saved, false);
         productService.refreshDerivedFields(productId);
         return response;
     }
@@ -85,7 +98,10 @@ public class ProductVariantService {
         }
         variant.touch();
 
-        VariantResponse response = VariantResponse.from(productVariantRepository.save(variant));
+        // Editing a variant does not touch its stock, but the response still has to report the
+        // truth rather than assume.
+        VariantResponse response = VariantResponse.from(
+            productVariantRepository.save(variant), stockAvailability.isBuyable(variantId));
         productService.refreshDerivedFields(productId);
         return response;
     }

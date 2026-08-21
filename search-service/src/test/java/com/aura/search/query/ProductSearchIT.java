@@ -89,7 +89,7 @@ class ProductSearchIT {
                                                long maxPrice, String status, String createdAt) {
         return new ProductChangedEvent(
             UUID.randomUUID(), Instant.now(), id, 9L, 3L, List.of(1L, 3L), categoryNames,
-            name, "p" + id, description, status, minPrice, maxPrice, 5,
+            name, "p" + id, description, status, minPrice, maxPrice, null, 5,
             Map.of("material", List.of("Leather")), List.of("Navy"), List.of("L"),
             null, Instant.parse(createdAt), 1_000L + id, false);
     }

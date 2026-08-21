@@ -31,6 +31,8 @@ public record ProductDocument(
     String status,
     Long minPrice,
     Long maxPrice,
+    /** Pre-sale price of the variant behind {@code minPrice}; null when it is not discounted. */
+    Long compareAtPrice,
     Integer totalStock,
     boolean inStock,
     List<String> colorNames,
@@ -65,6 +67,7 @@ public record ProductDocument(
             event.status(),
             event.minPrice(),
             event.maxPrice(),
+            event.compareAtPrice(),
             event.totalStock(),
             event.totalStock() != null && event.totalStock() > 0,
             event.colorNames(),

@@ -1,6 +1,7 @@
 package com.aura.catalog.product;
 
 import com.aura.catalog.color.Color;
+import com.aura.catalog.inventory.StockAvailability;
 import com.aura.catalog.color.ColorService;
 import com.aura.catalog.product.dto.VariantRequest;
 import com.aura.catalog.product.dto.VariantResponse;
@@ -49,12 +50,15 @@ class ProductVariantServiceTest {
     @Mock
     private SizeService sizeService;
 
+    @Mock
+    private StockAvailability stockAvailability;
+
     private ProductVariantService service;
 
     @BeforeEach
     void setUp() {
-        service = new ProductVariantService(
-            productVariantRepository, inventoryRepository, productService, colorService, sizeService);
+        service = new ProductVariantService(productVariantRepository, inventoryRepository,
+            stockAvailability, productService, colorService, sizeService);
     }
 
     private Product product(ProductStatus status) {

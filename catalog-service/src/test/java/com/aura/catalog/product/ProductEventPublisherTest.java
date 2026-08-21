@@ -88,6 +88,14 @@ class ProductEventPublisherTest {
         return variant;
     }
 
+    private ProductVariant pricedVariant(long id, long price, Long compareAt, boolean active) {
+        ProductVariant variant =
+            ProductVariant.of(PRODUCT_ID, 1L, 1L, "SKU" + id, price, compareAt);
+        variant.setId(id);
+        variant.setActive(active);
+        return variant;
+    }
+
     private void categoryPath(String path) {
         Category category = new Category();
         category.setId(CATEGORY_ID);
@@ -276,5 +284,68 @@ class ProductEventPublisherTest {
         publisher.productChanged(product(ProductStatus.ACTIVE));
 
         assertThat(captureEvent().categoryPath()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("the sale price sent is the one belonging to the cheapest variant")
+    void compareAtFollowsTheCheapestVariant() {
+        categoryPath("5");
+        when(productMediaRepository.findByProductIdOrderBySortOrderAscIdAsc(PRODUCT_ID))
+            .thenReturn(List.of());
+        // The dearer variant has the larger discount. Taking the biggest compare-at would advertise
+        // a saving against a price the shopper cannot pay - the card quotes "from 100".
+        when(productVariantRepository.findByProductIdOrderByIdAsc(PRODUCT_ID)).thenReturn(List.of(
+            pricedVariant(1L, 100L, 150L, true),
+            pricedVariant(2L, 900L, 2_000L, true)));
+
+        publisher.productChanged(product(ProductStatus.ACTIVE));
+
+        assertThat(captureEvent().compareAtPrice()).isEqualTo(150L);
+    }
+
+    @Test
+    @DisplayName("an inactive cheap variant sets neither the price nor the price struck through it")
+    void inactiveVariantsAreIgnored() {
+        categoryPath("5");
+        when(productMediaRepository.findByProductIdOrderBySortOrderAscIdAsc(PRODUCT_ID))
+            .thenReturn(List.of());
+        when(productVariantRepository.findByProductIdOrderByIdAsc(PRODUCT_ID)).thenReturn(List.of(
+            pricedVariant(1L, 100L, 150L, false),
+            pricedVariant(2L, 900L, 1_200L, true)));
+
+        publisher.productChanged(product(ProductStatus.ACTIVE));
+
+        assertThat(captureEvent().compareAtPrice())
+            .describedAs("the active variant at 900 is the cheapest buyable one")
+            .isEqualTo(1_200L);
+    }
+
+    @Test
+    @DisplayName("no compare-at price means no sale, rather than a zero-percent one")
+    void undiscountedProductSendsNull() {
+        categoryPath("5");
+        when(productMediaRepository.findByProductIdOrderBySortOrderAscIdAsc(PRODUCT_ID))
+            .thenReturn(List.of());
+        when(productVariantRepository.findByProductIdOrderByIdAsc(PRODUCT_ID))
+            .thenReturn(List.of(pricedVariant(1L, 100L, null, true)));
+
+        publisher.productChanged(product(ProductStatus.ACTIVE));
+
+        assertThat(captureEvent().compareAtPrice()).isNull();
+    }
+
+    @Test
+    @DisplayName("a compare-at at or below the price is not a discount")
+    void compareAtNotAboveThePriceIsIgnored() {
+        categoryPath("5");
+        when(productMediaRepository.findByProductIdOrderBySortOrderAscIdAsc(PRODUCT_ID))
+            .thenReturn(List.of());
+        // Equal is the common data-entry case; below would render a negative discount.
+        when(productVariantRepository.findByProductIdOrderByIdAsc(PRODUCT_ID))
+            .thenReturn(List.of(pricedVariant(1L, 100L, 100L, true)));
+
+        publisher.productChanged(product(ProductStatus.ACTIVE));
+
+        assertThat(captureEvent().compareAtPrice()).isNull();
     }
 }

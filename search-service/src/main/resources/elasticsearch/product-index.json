@@ -102,6 +102,7 @@
       "status": { "type": "keyword" },
       "minPrice": { "type": "long" },
       "maxPrice": { "type": "long" },
+      "compareAtPrice": { "type": "long" },
       "totalStock": { "type": "integer" },
       "inStock": { "type": "boolean" },
       "colorNames": {
