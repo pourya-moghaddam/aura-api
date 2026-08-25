@@ -39,7 +39,8 @@ class OtpRateLimiterTest {
             5,      // per phone per hour
             20,     // per ip per hour
             2000,   // global per day
-            "pepper", "binding");
+            "pepper", "binding",
+            "");    // no dev code
 
         limiter = new OtpRateLimiter(redis, properties);
         when(redis.opsForValue()).thenReturn(valueOps);

@@ -178,6 +178,9 @@ services:
       AURA_AUTH_TOKEN_RSA_PUBLIC_KEY_PEM: ${AURA_AUTH_TOKEN_RSA_PUBLIC_KEY_PEM:-}
       AURA_SUPERADMIN_PHONE: ${AURA_SUPERADMIN_PHONE:-}
       AURA_SUPERADMIN_PASSWORD: ${AURA_SUPERADMIN_PASSWORD:-}
+      # Local development only, and empty unless deliberately set. Present in this file and NOT in
+      # compose.prod.yaml on purpose: auth-service refuses to start with it under the prod profile.
+      AURA_OTP_DEV_CODE: ${AURA_OTP_DEV_CODE:-}
     ports:
       - "8081:8081"
     depends_on:
