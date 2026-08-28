@@ -108,6 +108,15 @@
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!--
+          Everything in this module is a reactive filter returning Mono<Void>, and subscribing by
+          hand makes the difference between "completed" and "never ran" invisible.
+        -->
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

@@ -92,6 +92,20 @@ spring:
                     redis-rate-limiter.replenishRate: 60
                     redis-rate-limiter.burstCapacity: 120
 
+            # Without this the reindex endpoint is unreachable: /api/control/** passes the audience
+            # check in GatewaySecurityConfig and then matches no route, so an authorised admin gets
+            # a 404 that reads like a missing endpoint rather than a missing route.
+            - id: search-service-control
+              uri: lb://SEARCH-SERVICE
+              predicates:
+                - Path=/api/control/search/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@userKeyResolver}"
+                    redis-rate-limiter.replenishRate: 20
+                    redis-rate-limiter.burstCapacity: 40
+
             - id: catalog-service-control
               uri: lb://CATALOG-SERVICE
               predicates:
