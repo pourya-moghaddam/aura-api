@@ -2,11 +2,11 @@ package com.aura.order.order;
 
 import com.aura.common.security.CurrentUser;
 import com.aura.common.security.SellerOnly;
+import com.aura.common.web.PageResponse;
 import com.aura.order.order.dto.SellerOrderResponse;
 import com.aura.order.order.dto.UpdateItemStatusRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
@@ -36,12 +36,19 @@ public class SellerOrderController {
 
     private final SellerOrderService sellerOrderService;
 
+    /**
+     * {@link PageResponse}, like the rest of the control surface, rather than Spring's own
+     * {@code Page}. The two disagree about the page number — {@code number} against {@code page} —
+     * so a client written against one paginates from zero forever against the other, without
+     * anything failing loudly enough to notice.
+     */
     @GetMapping
     @SellerOnly
-    public ResponseEntity<Page<SellerOrderResponse>> list(
+    public ResponseEntity<PageResponse<SellerOrderResponse>> list(
         @PageableDefault(size = 20) Pageable pageable
     ) {
-        return ResponseEntity.ok(sellerOrderService.list(CurrentUser.requiredId(), pageable));
+        return ResponseEntity.ok(
+            PageResponse.of(sellerOrderService.list(CurrentUser.requiredId(), pageable)));
     }
 
     @GetMapping("/{orderId}")

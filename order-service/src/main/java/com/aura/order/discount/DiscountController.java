@@ -2,6 +2,7 @@ package com.aura.order.discount;
 
 import com.aura.common.security.AdminOnly;
 import com.aura.common.security.CurrentUser;
+import com.aura.common.web.PageResponse;
 import com.aura.order.cart.CartOwner;
 import com.aura.order.cart.CartOwnerResolver;
 import com.aura.order.cart.CartService;
@@ -55,12 +56,13 @@ public class DiscountController {
 
     // --- administration ------------------------------------------------------------------------
 
+    /** {@link PageResponse}, like the rest of the control surface. See SellerOrderController. */
     @GetMapping("/api/control/orders/discounts")
     @AdminOnly
-    public ResponseEntity<Page<DiscountCodeResponse>> list(
+    public ResponseEntity<PageResponse<DiscountCodeResponse>> list(
         @PageableDefault(size = 20) Pageable pageable
     ) {
-        return ResponseEntity.ok(discountService.list(pageable));
+        return ResponseEntity.ok(PageResponse.of(discountService.list(pageable)));
     }
 
     @GetMapping("/api/control/orders/discounts/{id}")
