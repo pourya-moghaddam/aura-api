@@ -20,6 +20,17 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Page<Order> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 
     /**
+     * Every order, newest first — the administrative view.
+     *
+     * <p>Unpaid ones included, unlike {@link #findPaidOrdersForSeller}. That filter's reasoning
+     * inverts here: a seller must not pack a parcel for money that has not arrived, while an
+     * administrator is specifically looking for the orders stuck at exactly that point.
+     */
+    Page<Order> findAllByOrderByCreatedAtDesc(Pageable pageable);
+
+    Page<Order> findByPaymentStatusOrderByCreatedAtDesc(PaymentStatus paymentStatus, Pageable pageable);
+
+    /**
      * Orders a seller has something in, newest first.
      *
      * <p>Paid only. An unpaid order is a shopper who may still be at their bank, and putting it on
