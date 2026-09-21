@@ -61,7 +61,14 @@ public class SecurityConfig {
                     "/api/auth/token/refresh"
                 ).permitAll()
                 .requestMatchers("/api/auth/.well-known/**").permitAll()
-                .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
+                // Everything under /actuator, and only because it no longer answers on this
+                // port at all: management.server.port moves it to 9091, which is never published.
+                // Permitting it here is what lets Prometheus scrape over the Docker network.
+                .requestMatchers("/actuator/**").permitAll()
+                // The API description and the page that renders it. Public in development so a
+                // frontend developer can read it without a token; compose.prod.yaml switches
+                // springdoc off entirely rather than relying on this being locked down.
+                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .anyRequest().authenticated()
             )
             .oauth2ResourceServer(oauth2 -> oauth2

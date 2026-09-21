@@ -1,0 +1,130 @@
+name: build
+
+# Pull requests and the long-lived branches. Not every push to every branch: the integration
+# suites start real Postgres, Kafka and Elasticsearch containers, and running that on a branch
+# nobody has opened a pull request for spends minutes to tell one person something they could
+# have run locally.
+on:
+  push:
+    branches: [main, 'phase-*']
+  pull_request:
+
+# A second push supersedes the first. Without this a busy morning queues four runs of a
+# twenty-minute suite to report on code that is already three commits stale.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: mvn verify
+    runs-on: ubuntu-latest
+    # The integration tests pull Elasticsearch, Postgres, Kafka and Redis images and run them.
+    # Generous rather than optimistic: a timeout that fires on a slow image pull looks like a
+    # test failure and sends someone hunting in the wrong place.
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # Must match <java.version> in the parent pom. The build sets
+          # maven.compiler.release, so an older JDK here fails at compile rather than
+          # producing something subtly different.
+          java-version: '25'
+          cache: maven
+
+      # verify rather than test, deliberately. The JaCoCo coverage gate binds to verify, and so
+      # does failsafe - `mvn test` runs the unit tests only and reports success while every
+      # Testcontainers suite and the 80% floor go unchecked.
+      - name: Build and test
+        run: ./mvnw -B -ntp verify
+
+      # The reports are the only way to see which test failed once the runner is gone.
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            **/target/surefire-reports/**
+            **/target/failsafe-reports/**
+          retention-days: 7
+
+  image:
+    name: container image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # One service, not all eight. The Dockerfile is parameterized and identical for every
+      # module, so building one proves the packaging works; building eight would spend fifteen
+      # minutes proving it seven more times.
+      #
+      # This job exists because a green test run does not mean a runnable image. notification-service
+      # once passed every test and then crash-looped on a missing class that only the runtime
+      # classpath was short of.
+      - name: Build an image
+        run: docker build --build-arg SERVICE=order-service -t aura/order-service:ci .
+
+  compose:
+    name: compose config
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # .env.example deliberately leaves secrets blank, and an empty assignment does not satisfy
+      # a `${VAR:?}` guard - compose treats unset and empty the same way. So CI fills the blanks,
+      # which is what a real deployment does too.
+      - name: Fill in the blanks
+        run: |
+          set -euo pipefail
+          sed -e 's/^AURA_INTERNAL_API_KEY=$/AURA_INTERNAL_API_KEY=ci/' \
+              -e 's/^AURA_SUPERADMIN_PASSWORD=$/AURA_SUPERADMIN_PASSWORD=ci/' \
+              .env.example > /tmp/dev.env
+
+          # Everything the production overlay additionally insists on.
+          cp /tmp/dev.env /tmp/prod.env
+          cat >> /tmp/prod.env <<'VARS'
+          POSTGRES_PASSWORD=ci
+          ELASTIC_PASSWORD=ci
+          MINIO_ROOT_USER=ci
+          MINIO_ROOT_PASSWORD=ci
+          MINIO_PUBLIC_ENDPOINT=https://cdn.example.ir
+          AURA_AUTH_TOKEN_RSA_PRIVATE_KEY_PEM=ci
+          AURA_AUTH_TOKEN_RSA_PUBLIC_KEY_PEM=ci
+          AURA_ZARINPAL_MODE=http
+          AURA_ZARINPAL_MERCHANT_ID=ci
+          AURA_SMS_MODE=http
+          SMS_IR_API_KEY=ci
+          SMS_IR_LINE_NUMBER=30007
+          MEDIA_SCAN_PROVIDER=clamav
+          GRAFANA_PASSWORD=ci
+          VARS
+
+      - name: Development stack parses
+        run: docker compose -f compose.yaml --env-file /tmp/dev.env config -q
+
+      # The production overlay is never run here, only resolved - which is the point. Its value is
+      # in the `:?` guards that stop a deploy when a dangerous default was left in place, and a
+      # typo in one of those is invisible until the day someone deploys.
+      - name: Production stack parses with every required variable supplied
+        run: docker compose -f compose.yaml -f compose.prod.yaml --env-file /tmp/prod.env config -q
+
+      # The guards are the feature, so prove one still fires. Without this the step above passes
+      # just as happily against a file where every `:?` had been deleted.
+      - name: A missing production variable stops the deploy
+        run: |
+          set -euo pipefail
+          grep -v '^AURA_ZARINPAL_MODE=' /tmp/prod.env > /tmp/partial.env
+          if docker compose -f compose.yaml -f compose.prod.yaml --env-file /tmp/partial.env config -q 2>/dev/null; then
+            echo "compose.prod.yaml accepted a missing AURA_ZARINPAL_MODE - the payment mock could reach production"
+            exit 1
+          fi

@@ -56,7 +56,16 @@ public class GatewaySecurityConfig {
             .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .authorizeExchange(exchange -> exchange
-                .pathMatchers("/actuator/health/**", "/actuator/info").permitAll()
+                // Everything under /actuator, and only because it no longer answers on this
+                // port at all: management.server.port moves it to 9091, which is never published.
+                // Permitting it here is what lets Prometheus scrape over the Docker network.
+                .pathMatchers("/actuator/**").permitAll()
+                // The aggregated API description and the page that renders it. The documents are
+                // fetched from the downstream services through the /api-docs/* routes, so both
+                // have to be reachable without a token - a reader who needs credentials to see
+                // what the credentials are for is stuck.
+                .pathMatchers("/api-docs/**", "/swagger-ui/**", "/swagger-ui.html",
+                    "/v3/api-docs/**", "/webjars/**").permitAll()
                 // The control-panel boundary. A storefront-audience token is rejected here even if
                 // the user holds ADMIN, so a plain session cannot be walked into the panel.
                 .pathMatchers("/api/control/**").hasAuthority(TokenAudience.CONTROL.authority())

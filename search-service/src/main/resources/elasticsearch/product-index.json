@@ -1,0 +1,125 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "max_result_window": 10000
+    },
+    "analysis": {
+      "char_filter": {
+        "zwnj_removal": {
+          "type": "mapping",
+          "mappings": ["\\u200C=>"]
+        }
+      },
+      "filter": {
+        "persian_stop_words": {
+          "type": "stop",
+          "stopwords": "_persian_"
+        },
+        "aura_edge_ngram": {
+          "type": "edge_ngram",
+          "min_gram": 2,
+          "max_gram": 20
+        }
+      },
+      "analyzer": {
+        "aura_persian": {
+          "type": "custom",
+          "char_filter": ["zwnj_removal"],
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
+            "decimal_digit",
+            "arabic_normalization",
+            "persian_normalization",
+            "persian_stop_words"
+          ]
+        },
+        "aura_persian_edge": {
+          "type": "custom",
+          "char_filter": ["zwnj_removal"],
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
+            "decimal_digit",
+            "arabic_normalization",
+            "persian_normalization",
+            "aura_edge_ngram"
+          ]
+        }
+      },
+      "normalizer": {
+        "aura_keyword": {
+          "type": "custom",
+          "filter": ["lowercase"]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "dynamic": false,
+    "dynamic_templates": [
+      {
+        "attribute_values_as_keywords": {
+          "path_match": "attributes.*",
+          "mapping": {
+            "type": "keyword",
+            "normalizer": "aura_keyword"
+          }
+        }
+      }
+    ],
+    "properties": {
+      "productId": { "type": "long" },
+      "sellerId": { "type": "long" },
+      "categoryId": { "type": "long" },
+      "categoryPath": { "type": "long" },
+      "categoryNames": {
+        "type": "text",
+        "analyzer": "aura_persian"
+      },
+      "name": {
+        "type": "text",
+        "analyzer": "aura_persian",
+        "fields": {
+          "ngram": {
+            "type": "text",
+            "analyzer": "aura_persian_edge",
+            "search_analyzer": "aura_persian"
+          },
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "slug": { "type": "keyword" },
+      "description": {
+        "type": "text",
+        "analyzer": "aura_persian"
+      },
+      "status": { "type": "keyword" },
+      "minPrice": { "type": "long" },
+      "maxPrice": { "type": "long" },
+      "compareAtPrice": { "type": "long" },
+      "totalStock": { "type": "integer" },
+      "inStock": { "type": "boolean" },
+      "colorNames": {
+        "type": "keyword",
+        "normalizer": "aura_keyword"
+      },
+      "sizeNames": {
+        "type": "keyword",
+        "normalizer": "aura_keyword"
+      },
+      "attributes": {
+        "type": "object",
+        "dynamic": true
+      },
+      "primaryMediaId": { "type": "keyword" },
+      "createdAt": { "type": "date" },
+      "updatedAt": { "type": "date" }
+    }
+  }
+}

@@ -14,12 +14,27 @@ services:
     ports: !override []
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in production}
+    # The one that must not be starved: everything else can be restarted, this holds the orders.
+    deploy:
+      resources:
+        limits:
+          memory: 2G
 
   redis:
     ports: !override []
+    # Carts and rate-limit counters. Small, and it should stay that way.
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   kafka:
     ports: !override []
+    # Kafka will happily use whatever it is given for page cache and heap.
+    deploy:
+      resources:
+        limits:
+          memory: 2G
 
   elasticsearch:
     ports: !override []
@@ -31,9 +46,17 @@ services:
     ports: !override []
     environment:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set in production}
+    # Streams objects rather than buffering them, so it needs little.
+    deploy:
+      resources:
+        limits:
+          memory: 1G
 
   discovery-service:
     ports: !override []
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
     deploy:
       resources:
         limits:
@@ -44,6 +67,11 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+      # Off in production. The description lists every control endpoint the shop has, which is
+      # a map of the admin surface handed to anyone who asks; and the UI will happily send
+      # requests, so it is also a console. Generate it from a non-production environment.
+      SPRINGDOC_API_DOCS_ENABLED: "false"
+      SPRINGDOC_SWAGGER_UI_ENABLED: "false"
       AURA_AUTH_TOKEN_RSA_PRIVATE_KEY_PEM: ${AURA_AUTH_TOKEN_RSA_PRIVATE_KEY_PEM:?signing key required}
       AURA_AUTH_TOKEN_RSA_PUBLIC_KEY_PEM: ${AURA_AUTH_TOKEN_RSA_PUBLIC_KEY_PEM:?signing key required}
       AURA_SUPERADMIN_PHONE: ${AURA_SUPERADMIN_PHONE:?bootstrap super admin phone required}
@@ -58,16 +86,95 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+      # Off in production. The description lists every control endpoint the shop has, which is
+      # a map of the admin surface handed to anyone who asks; and the UI will happily send
+      # requests, so it is also a console. Generate it from a non-production environment.
+      SPRINGDOC_API_DOCS_ENABLED: "false"
+      SPRINGDOC_SWAGGER_UI_ENABLED: "false"
     deploy:
       resources:
         limits:
           memory: 768M
 
-  notification-service:
+  order-service:
+    ports: !override []
     environment:
       SPRING_PROFILES_ACTIVE: prod
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+      # Off in production. The description lists every control endpoint the shop has, which is
+      # a map of the admin surface handed to anyone who asks; and the UI will happily send
+      # requests, so it is also a console. Generate it from a non-production environment.
+      SPRINGDOC_API_DOCS_ENABLED: "false"
+      SPRINGDOC_SWAGGER_UI_ENABLED: "false"
+      # The single most dangerous default in the codebase. In mock mode every payment is treated
+      # as successful and stock is committed for nothing - the shop gives goods away and never
+      # learns. Required rather than defaulted, so a missing value stops the deploy.
+      AURA_ZARINPAL_MODE: ${AURA_ZARINPAL_MODE:?must be "http" in production}
+      AURA_ZARINPAL_MERCHANT_ID: ${AURA_ZARINPAL_MERCHANT_ID:?Zarinpal merchant id required}
+      AURA_ZARINPAL_BASE_URL: ${AURA_ZARINPAL_BASE_URL:?use https://payment.zarinpal.com for live}
+      # Both are opened in the shopper's browser, so they are public addresses rather than
+      # container ones. Getting these wrong strands people mid-payment.
+      AURA_ZARINPAL_CALLBACK_URL: ${AURA_ZARINPAL_CALLBACK_URL:?public callback URL required}
+      AURA_STOREFRONT_PAYMENT_RESULT_URL: ${AURA_STOREFRONT_PAYMENT_RESULT_URL:?storefront result URL required}
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  media-service:
+    ports: !override []
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+      # Off in production. The description lists every control endpoint the shop has, which is
+      # a map of the admin surface handed to anyone who asks; and the UI will happily send
+      # requests, so it is also a console. Generate it from a non-production environment.
+      SPRINGDOC_API_DOCS_ENABLED: "false"
+      SPRINGDOC_SWAGGER_UI_ENABLED: "false"
+      # "none" accepts every upload unscanned. A shop that lets sellers upload files serves them
+      # back to shoppers, so this is a malware distribution channel until a scanner is in front.
+      MEDIA_SCAN_PROVIDER: ${MEDIA_SCAN_PROVIDER:?must be "clamav" in production}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?object storage user required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?object storage password required}
+      # Goes into presigned URLs, which are opened by a browser: "minio" resolves inside the
+      # Docker network and nowhere else, so a container address here breaks every image.
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:?public object storage URL required}
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  search-service:
+    ports: !override []
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+      # Off in production. The description lists every control endpoint the shop has, which is
+      # a map of the admin surface handed to anyone who asks; and the UI will happily send
+      # requests, so it is also a console. Generate it from a non-production environment.
+      SPRINGDOC_API_DOCS_ENABLED: "false"
+      SPRINGDOC_SWAGGER_UI_ENABLED: "false"
+      # Elasticsearch runs with security on above, so the client has to authenticate. Without
+      # these every call is a 401 - including the index bootstrap at startup, which means the
+      # service reports healthy while search returns nothing at all.
+      ELASTICSEARCH_USERNAME: ${ELASTICSEARCH_USERNAME:-elastic}
+      ELASTICSEARCH_PASSWORD: ${ELASTIC_PASSWORD:?ELASTIC_PASSWORD must be set in production}
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  notification-service:
+    ports: !override []
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+      # The key alone was not enough: mode stays "mock" unless it is set, so every message was
+      # accepted, logged and never sent while a perfectly good credential sat unused.
+      AURA_SMS_MODE: ${AURA_SMS_MODE:?must be "http" in production}
       SMS_IR_API_KEY: ${SMS_IR_API_KEY:?SMS provider key required}
+      SMS_IR_OTP_TEMPLATE_ID: ${SMS_IR_OTP_TEMPLATE_ID:?approved OTP template id required}
+      SMS_IR_LINE_NUMBER: ${SMS_IR_LINE_NUMBER:?sender line required for order-status messages}
     deploy:
       resources:
         limits:
@@ -76,7 +183,15 @@ services:
   gateway-service:
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      # A tenth of requests. Tracing every one of them at real traffic costs more in storage and
+      # query time than it returns - and the tail you are hunting shows up in a 10% sample anyway.
+      AURA_TRACING_SAMPLE_RATE: ${AURA_TRACING_SAMPLE_RATE:-0.1}
       LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+      # Off in production. The description lists every control endpoint the shop has, which is
+      # a map of the admin surface handed to anyone who asks; and the UI will happily send
+      # requests, so it is also a console. Generate it from a non-production environment.
+      SPRINGDOC_API_DOCS_ENABLED: "false"
+      SPRINGDOC_SWAGGER_UI_ENABLED: "false"
     # Bound to loopback: Nginx terminates TLS on the host and proxies to it. Publishing 0.0.0.0
     # here would expose the gateway directly, bypassing TLS and the X-Forwarded-For rewrite that
     # the rate limiter depends on.
@@ -86,3 +201,31 @@ services:
       resources:
         limits:
           memory: 768M
+
+  tempo:
+    ports: !override []
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  prometheus:
+    # Not published. Metrics describe the business - order rates, revenue shape, error spikes -
+    # and Prometheus has no authentication of its own to put in front of them.
+    ports: !override []
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  grafana:
+    # Loopback only, same reasoning as the gateway: Nginx terminates TLS and proxies to it.
+    ports: !override
+      - "127.0.0.1:3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?Grafana admin password required}
+    deploy:
+      resources:
+        limits:
+          memory: 512M

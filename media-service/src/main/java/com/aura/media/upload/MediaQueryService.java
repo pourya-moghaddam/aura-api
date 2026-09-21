@@ -63,6 +63,40 @@ public class MediaQueryService {
     }
 
     /**
+     * Marks a file anonymously readable, so it can appear on a storefront page.
+     *
+     * <p>Owner-scoped like everything else here, which is what makes it safe for catalog-service to
+     * call while forwarding the seller's own token: a seller can only publish their own uploads, so
+     * guessing another seller's media id achieves nothing.
+     *
+     * <p>Idempotent — publishing an already-public file is a no-op rather than an error, because
+     * the caller is a retryable write path (attaching media to a product) and a retry must not fail
+     * on work that already succeeded.
+     */
+    @Transactional
+    public MediaFileResponse publish(long ownerId, UUID mediaId) {
+        MediaFile file = requireOwned(ownerId, mediaId);
+        file.publish();
+        mediaFileRepository.save(file);
+        return MediaFileResponse.from(file);
+    }
+
+    /**
+     * Withdraws public access, for media detached from a product.
+     *
+     * <p>Best-effort by nature: the same file could be attached to a second product, and this
+     * service has no record of that relationship. Catalog owns it, so not unpublishing something
+     * still in use is catalog's responsibility.
+     */
+    @Transactional
+    public MediaFileResponse unpublish(long ownerId, UUID mediaId) {
+        MediaFile file = requireOwned(ownerId, mediaId);
+        file.unpublish();
+        mediaFileRepository.save(file);
+        return MediaFileResponse.from(file);
+    }
+
+    /**
      * Deletes the row and the object.
      *
      * <p>Only the row is guaranteed gone. If the object delete fails, the reaper picks up the

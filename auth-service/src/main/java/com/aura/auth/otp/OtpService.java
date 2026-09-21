@@ -2,6 +2,7 @@ package com.aura.auth.otp;
 
 import com.aura.auth.config.OtpProperties;
 import com.aura.auth.user.exception.InvalidOtpException;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.env.Environment;
@@ -89,16 +90,64 @@ public class OtpService {
             throw new InvalidOtpException(INVALID_MESSAGE);
         }
 
-        // Constant-time: a timing-sensitive comparison leaks how many leading digits were right,
-        // which reduces the search from 10^6 to about 60 guesses.
-        if (!MessageDigest.isEqual(
-            storedHash.getBytes(StandardCharsets.UTF_8),
-            hash(submittedCode).getBytes(StandardCharsets.UTF_8))) {
+        if (!matches(storedHash, submittedCode)) {
             throw new InvalidOtpException(INVALID_MESSAGE);
         }
 
         // Success consumes the code; otherwise it stays replayable until its TTL.
         burn(phone);
+    }
+
+    private boolean matches(String storedHash, String submittedCode) {
+        // Constant-time: a timing-sensitive comparison leaks how many leading digits were right,
+        // which reduces the search from 10^6 to about 60 guesses.
+        if (MessageDigest.isEqual(
+            storedHash.getBytes(StandardCharsets.UTF_8),
+            hash(submittedCode).getBytes(StandardCharsets.UTF_8))) {
+            return true;
+        }
+
+        /*
+         * The development escape hatch, checked only after the real code has failed.
+         *
+         * Deliberately reached *here* rather than at the top of verify(): a code must still have
+         * been issued and still be unexpired, and the attempt counter has already been spent. So
+         * the flow being exercised locally is the real one — request, then verify — rather than a
+         * shortcut that skips half of what is being tested.
+         *
+         * Also constant-time, for no security reason: consistency, so this branch cannot become
+         * the one place someone later copies a naive comparison from.
+         */
+        return otpProperties.hasDevCode()
+            && MessageDigest.isEqual(
+                otpProperties.devCode().getBytes(StandardCharsets.UTF_8),
+                submittedCode.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Refuses to start with a development code configured in production, and shouts about it
+     * everywhere else.
+     *
+     * <p>A fixed OTP means every account is reachable by anyone who knows a phone number, which is
+     * the whole authentication system defeated by one environment variable. That is precisely the
+     * kind of setting that gets copied from a local {@code .env} into a deployment, so it fails
+     * loudly at startup rather than silently accepting {@code 111111} forever.
+     */
+    @PostConstruct
+    void guardDevCode() {
+        if (!otpProperties.hasDevCode()) {
+            return;
+        }
+
+        if (environment.matchesProfiles("prod")) {
+            throw new IllegalStateException("""
+                aura.auth.otp.dev-code (AURA_OTP_DEV_CODE) is set under the prod profile. \
+                A fixed one-time code makes every account signable-into by anyone who knows a \
+                phone number. Unset it.""");
+        }
+
+        log.warn("!!! OTP DEV CODE IS ENABLED !!! Any account can be signed into with a fixed "
+            + "code. This must never be set outside local development.");
     }
 
     private void burn(String phone) {

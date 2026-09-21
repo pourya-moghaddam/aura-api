@@ -12,6 +12,7 @@ public final class Topics {
     public static final String OTP_REQUESTED = "aura.auth.otp-requested.v1";
     public static final String PRODUCT_CHANGED = "aura.catalog.product-changed.v1";
     public static final String ORDER_ITEM_STATUS_CHANGED = "aura.order.item-status-changed.v1";
+    public static final String ORDER_PAID = "aura.order.paid.v1";
 
     private Topics() {
     }

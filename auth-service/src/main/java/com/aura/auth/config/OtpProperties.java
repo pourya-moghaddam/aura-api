@@ -26,6 +26,12 @@ import java.time.Duration;
  * @param maxPerDayGlobal  circuit breaker on total daily sends. The last line of defence: if every
  *                         other limit is evaded by a distributed source, this caps the bill.
  * @param pepper           HMAC key for hashing codes at rest. Required under the prod profile.
+ * @param devCode          <strong>development only.</strong> When set, this code is accepted in
+ *                         place of the real one, so the login flow can be exercised locally — codes
+ *                         are hashed at rest and deliberately never logged, so there is otherwise
+ *                         no way to complete a sign-in without a working SMS provider. Refused
+ *                         outright under the prod profile: it makes every account reachable by
+ *                         anyone who knows a phone number.
  */
 @ConfigurationProperties(prefix = "aura.auth.otp")
 public record OtpProperties(
@@ -37,10 +43,15 @@ public record OtpProperties(
     @DefaultValue("20") int maxPerIpPerHour,
     @DefaultValue("2000") int maxPerDayGlobal,
     @DefaultValue("") String pepper,
-    @DefaultValue("otpRequestedOut-out-0") String otpBindingName
+    @DefaultValue("otpRequestedOut-out-0") String otpBindingName,
+    @DefaultValue("") String devCode
 ) {
 
     public boolean hasPepper() {
         return pepper != null && !pepper.isBlank();
+    }
+
+    public boolean hasDevCode() {
+        return devCode != null && !devCode.isBlank();
     }
 }

@@ -71,7 +71,8 @@ class UserServiceTest {
     @BeforeEach
     void setUp() {
         OtpProperties otpProperties = new OtpProperties(
-            Duration.ofMinutes(3), 6, 5, Duration.ofSeconds(60), 5, 20, 2000, "test-pepper", BINDING);
+            Duration.ofMinutes(3), 6, 5, Duration.ofSeconds(60), 5, 20, 2000, "test-pepper",
+            BINDING, "");
 
         userService = new UserService(
             userRepository, roleRepository, streamBridge, otpProperties,

@@ -1,0 +1,109 @@
+package com.aura.order.outbox;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.cloud.stream.function.StreamBridge;
+import org.springframework.messaging.support.MessageBuilder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Map;
+
+import com.aura.common.events.Topics;
+
+/**
+ * Drains the outbox to Kafka.
+ *
+ * <p>Each row is published and marked in the same transaction that claimed it, so a crash between
+ * the two leaves the row pending and the next sweep retries. At-least-once by design: consumers
+ * deduplicate on {@code eventId}, which they can do, rather than inventing an event that never
+ * arrived, which they cannot.
+ *
+ * <p>What is at stake here is smaller than catalog's — a duplicate SMS rather than a wrong search
+ * index — but the failure is more visible to a customer, who receives it on their telephone.
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class OutboxPublisher {
+
+    /**
+     * Topic to binding. A single hard-coded binding was fine with one event type and becomes a
+     * silent misroute the moment there are two — every event would go to whichever destination the
+     * one binding names, and the consumers of the other topic would simply never hear anything.
+     */
+    private static final Map<String, String> BINDINGS = Map.of(
+        Topics.ORDER_ITEM_STATUS_CHANGED, "orderItemStatusChangedOut-out-0",
+        Topics.ORDER_PAID, "orderPaidOut-out-0");
+
+    /** Kafka's own header for the partition key, honoured by the binder. */
+    private static final String PARTITION_KEY_HEADER = "partitionKey";
+
+    private final OutboxRepository outboxRepository;
+    private final StreamBridge streamBridge;
+
+    /**
+     * Publishes one batch.
+     *
+     * <p>Failures are recorded per row rather than thrown, so one poisoned event cannot block
+     * every event behind it — including other buyers' dispatch notifications.
+     */
+    @Transactional
+    public int publishBatch(int batchSize) {
+        List<OutboxEntry> pending = outboxRepository.claimPending(batchSize);
+        if (pending.isEmpty()) {
+            return 0;
+        }
+
+        int published = 0;
+        for (OutboxEntry entry : pending) {
+            try {
+                // Bytes with an explicit content type, not a String. The payload is already
+                // serialised JSON; handing the binder a String makes it serialise that string
+                // again, so consumers receive a quoted, escaped blob instead of an object. It
+                // costs nothing to get right and is invisible until something tries to read it.
+                streamBridge.send(bindingFor(entry.getTopic()), MessageBuilder
+                    .withPayload(entry.getPayload().getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                    .setHeader(org.springframework.messaging.MessageHeaders.CONTENT_TYPE,
+                        org.springframework.util.MimeTypeUtils.APPLICATION_JSON)
+                    .setHeader(PARTITION_KEY_HEADER, entry.getPartitionKey())
+                    .setHeader("eventId", entry.getEventId().toString())
+                    .build());
+
+                entry.markPublished();
+                published++;
+
+            } catch (RuntimeException e) {
+                log.warn("Could not publish outbox entry {} (attempt {}): {}",
+                    entry.getId(), entry.getAttempts() + 1, e.getMessage());
+                entry.markFailed(e.toString());
+            }
+        }
+
+        outboxRepository.saveAll(pending);
+        return published;
+    }
+
+    /**
+     * Refuses to guess. An unrouted topic would otherwise be published to nowhere, or worse to the
+     * wrong place, and the outbox row would be marked sent either way.
+     */
+    private String bindingFor(String topic) {
+        String binding = BINDINGS.get(topic);
+        if (binding == null) {
+            throw new IllegalStateException("No binding configured for topic " + topic);
+        }
+        return binding;
+    }
+
+    @Transactional
+    public int purgePublishedBefore(java.time.OffsetDateTime before) {
+        return outboxRepository.deletePublishedBefore(before);
+    }
+
+    @Transactional(readOnly = true)
+    public long pendingCount() {
+        return outboxRepository.countByPublishedAtIsNull();
+    }
+}

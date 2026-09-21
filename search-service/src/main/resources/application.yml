@@ -1,0 +1,133 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: search-service
+
+  cloud:
+    function:
+      definition: productChanged;orderPaid
+    stream:
+      bindings:
+        orderPaid-in-0:
+          destination: ${aura.kafka.topics.order-paid:aura.order.paid.v1}
+          # Its own group, so a poisoned sales message cannot stall product indexing, or the other
+          # way round. The two consumers have nothing to say to each other.
+          group: search-trending
+          consumer:
+            max-attempts: 3
+            back-off-initial-interval: 1000
+        productChanged-in-0:
+          destination: ${aura.kafka.topics.product-changed:aura.catalog.product-changed.v1}
+          group: search-indexer
+          consumer:
+            # At-least-once with a bounded retry, then the message goes to the DLQ rather than
+            # blocking every product behind it. The index can always be rebuilt from catalog, so a
+            # single stuck document must never stop the stream.
+            max-attempts: 3
+            back-off-initial-interval: 1000
+      kafka:
+        binder:
+          # Without this a trace stops dead at the producer: the span context is never written
+          # into the message headers, and the consumer starts a fresh trace with no idea what
+          # caused it. Checkout and the SMS it triggers then read as two unrelated stories.
+          enable-observation: true
+        bindings:
+          productChanged-in-0:
+            consumer:
+              enable-dlq: true
+              dlq-name: ${aura.kafka.topics.product-changed:aura.catalog.product-changed.v1}.dlq
+          orderPaid-in-0:
+            consumer:
+              enable-dlq: true
+              dlq-name: ${aura.kafka.topics.order-paid:aura.order.paid.v1}.dlq
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+aura:
+  search:
+    uri: ${ELASTICSEARCH_URI:http://localhost:9200}
+    # Empty in development, where the cluster runs with security off. compose.prod.yaml turns
+    # xpack.security on and supplies these; without them every call is a 401.
+    username: ${ELASTICSEARCH_USERNAME:}
+    password: ${ELASTICSEARCH_PASSWORD:}
+    # Everything reads and writes through the alias, never an index name. That indirection is what
+    # makes a mapping change a reindex-and-flip rather than downtime.
+    alias: ${AURA_SEARCH_ALIAS:products}
+    index-bootstrap: ${AURA_SEARCH_INDEX_BOOTSTRAP:true}
+
+  security:
+    jwt:
+      jwk-set-uri: ${AURA_JWKS_URI:http://localhost:8081/api/auth/.well-known/jwks.json}
+      issuer: ${AURA_TOKEN_ISSUER:http://localhost:8081}
+
+management:
+  # Actuator moves off the application port onto its own, and that port is never published.
+  # Metrics carry business shape - order counts, queue depth, error rates - and "/actuator is not
+  # reachable from outside" becomes structural rather than a rule someone has to keep enforcing in
+  # every service's security config. It also means the gateway cannot route to it by accident.
+  server:
+    port: 9091
+  observations:
+    enable:
+      # Spring Security emits a span per filter chain, per authorize call, per secured request -
+      # six of the twenty-four spans in a checkout trace, none of which say anything about the
+      # checkout. Worse, suppressing an actuator request's *server* span leaves these behind as
+      # orphans, so Tempo lists them as separate root traces and the trace list fills with
+      # "security filterchain before" from monitoring traffic nobody asked to trace.
+      spring.security: false
+  tracing:
+    sampling:
+      # Everything, in development, because a trace you did not sample is the one you wanted.
+      # compose.prod.yaml turns this down: at real traffic the cost is not the sampling, it is
+      # storing and searching what was sampled.
+      probability: ${AURA_TRACING_SAMPLE_RATE:1.0}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          # Tempo. Grafana reads from it, so a trace and the dashboards that led you to it live in
+          # the same place.
+          endpoint: ${AURA_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+  metrics:
+    distribution:
+      # Without this Micrometer publishes only a count and a sum for request timings, so any
+      # percentile query returns nothing at all - the dashboard panel renders empty and reads as
+      # "no traffic" rather than "no data". A mean hides the case that matters: it stays flat while
+      # one shopper in twenty waits eight seconds for checkout.
+      percentiles-histogram:
+        http.server.requests: true
+      # Bounded on purpose. An unbounded histogram is one series per bucket per endpoint per
+      # status, which is how a metrics endpoint quietly becomes the slowest thing in the service.
+      minimum-expected-value:
+        http.server.requests: 10ms
+      maximum-expected-value:
+        http.server.requests: 10s
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+
+logging:
+  level:
+    root: INFO
+    com.aura: DEBUG

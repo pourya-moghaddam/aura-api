@@ -2,9 +2,14 @@ package com.aura.common.web;
 
 import com.aura.common.web.correlation.CorrelationIdFilter;
 import com.aura.common.web.error.GlobalExceptionHandler;
+import com.aura.common.web.observation.ActuatorObservationPredicate;
+import com.aura.common.web.openapi.AuraOpenApiCustomiser;
+import io.swagger.v3.oas.models.OpenAPI;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 
 /**
@@ -29,5 +34,28 @@ public class AuraWebAutoConfiguration {
     @ConditionalOnMissingBean
     public GlobalExceptionHandler globalExceptionHandler() {
         return new GlobalExceptionHandler();
+    }
+
+    /**
+     * Conditional on the class, because common-web is also on the classpath of services that do
+     * not pull in observation at all - and a bean referring to a missing type fails the whole
+     * context rather than the one feature.
+     */
+    @Bean
+    @ConditionalOnClass(name = "io.micrometer.observation.ObservationPredicate")
+    @ConditionalOnMissingBean
+    public ActuatorObservationPredicate actuatorObservationPredicate() {
+        return new ActuatorObservationPredicate();
+    }
+
+    /**
+     * Only where springdoc is on the classpath, which is the services that actually serve an API -
+     * notification-service consumes events and has nothing to describe.
+     */
+    @Bean
+    @ConditionalOnClass(name = "org.springdoc.core.configuration.SpringDocConfiguration")
+    @ConditionalOnMissingBean
+    public OpenAPI auraOpenApi(@Value("${spring.application.name:aura}") String applicationName) {
+        return AuraOpenApiCustomiser.describe(applicationName);
     }
 }

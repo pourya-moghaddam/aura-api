@@ -41,12 +41,15 @@ class OtpServiceTest {
 
     @BeforeEach
     void setUp() {
-        OtpProperties properties = new OtpProperties(
-            Duration.ofMinutes(3), 6, 5, Duration.ofSeconds(60), 5, 20, 2000,
-            "a-fixed-test-pepper", "binding");
-
-        otpService = new OtpService(redis, properties, rateLimiter, new MockEnvironment());
+        otpService = new OtpService(redis, propertiesWithDevCode(""), rateLimiter,
+            new MockEnvironment());
         when(redis.opsForValue()).thenReturn(valueOps);
+    }
+
+    private static OtpProperties propertiesWithDevCode(String devCode) {
+        return new OtpProperties(
+            Duration.ofMinutes(3), 6, 5, Duration.ofSeconds(60), 5, 20, 2000,
+            "a-fixed-test-pepper", "binding", devCode);
     }
 
     /** Captures whatever the service wrote to Redis under the code key. */
@@ -176,6 +179,82 @@ class OtpServiceTest {
 
         // A counter outliving its code would poison the next code issued to this number.
         verify(redis).expire(ATTEMPTS_KEY, Duration.ofMinutes(3));
+    }
+
+    // --- the development escape hatch -----------------------------------------------------------
+
+    /**
+     * The reason it exists: codes are hashed at rest and deliberately never logged, so without this
+     * there is no way to finish a sign-in locally without a live SMS provider.
+     */
+    @Test
+    void acceptsTheDevCodeWhenOneIsConfigured() {
+        OtpService withDevCode = new OtpService(redis, propertiesWithDevCode("111111"),
+            rateLimiter, new MockEnvironment());
+
+        withDevCode.issue(PHONE, null);
+        // Captured before stubbing: storedValue() runs a verify(), which Mockito rejects inside a
+        // when(...) argument as an unfinished stubbing.
+        String storedHash = storedValue();
+        when(valueOps.get(CODE_KEY)).thenReturn(storedHash);
+        when(valueOps.increment(ATTEMPTS_KEY)).thenReturn(1L);
+
+        assertThatCode(() -> withDevCode.verify(PHONE, "111111")).doesNotThrowAnyException();
+        // Burned like any other success, so it cannot be replayed for the rest of the TTL.
+        verify(redis, atLeastOnce()).delete(CODE_KEY);
+    }
+
+    /** The default. An unset dev code must leave the fixed value as wrong as any other guess. */
+    @Test
+    void rejectsTheDevCodeValueWhenNoDevCodeIsConfigured() {
+        otpService.issue(PHONE, null);
+        String storedHash = storedValue();
+        when(valueOps.get(CODE_KEY)).thenReturn(storedHash);
+        when(valueOps.increment(ATTEMPTS_KEY)).thenReturn(1L);
+
+        assertThatThrownBy(() -> otpService.verify(PHONE, "111111"))
+            .isInstanceOf(InvalidOtpException.class);
+    }
+
+    /**
+     * The dev code is a second acceptable answer, not a bypass: a code must still have been
+     * requested and still be unexpired, so what gets exercised locally is the real flow.
+     */
+    @Test
+    void refusesTheDevCodeWhenNoCodeWasEverIssued() {
+        OtpService withDevCode = new OtpService(redis, propertiesWithDevCode("111111"),
+            rateLimiter, new MockEnvironment());
+        when(valueOps.get(CODE_KEY)).thenReturn(null);
+
+        assertThatThrownBy(() -> withDevCode.verify(PHONE, "111111"))
+            .isInstanceOf(InvalidOtpException.class);
+    }
+
+    /**
+     * A fixed OTP in production is the entire authentication system defeated by one environment
+     * variable, and it is exactly the sort of setting that gets copied out of a local .env.
+     */
+    @Test
+    void refusesToStartWithADevCodeUnderTheProdProfile() {
+        MockEnvironment prod = new MockEnvironment();
+        prod.setActiveProfiles("prod");
+
+        OtpService inProd = new OtpService(redis, propertiesWithDevCode("111111"), rateLimiter,
+            prod);
+
+        assertThatThrownBy(inProd::guardDevCode)
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("dev-code");
+    }
+
+    @Test
+    void startsUnderTheProdProfileWhenNoDevCodeIsSet() {
+        MockEnvironment prod = new MockEnvironment();
+        prod.setActiveProfiles("prod");
+
+        OtpService inProd = new OtpService(redis, propertiesWithDevCode(""), rateLimiter, prod);
+
+        assertThatCode(inProd::guardDevCode).doesNotThrowAnyException();
     }
 
     private String catchMessage(Runnable action) {

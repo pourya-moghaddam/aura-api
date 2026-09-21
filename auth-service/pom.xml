@@ -63,6 +63,47 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!--
+          The 3.x line, pinned in the parent: 2.x targets Boot 3 and does not survive the module
+          split. notification-service does not have this - it consumes events and serves no API.
+        -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
+        </dependency>
+
+        <!--
+          Without this the `prometheus` entry in the actuator exposure list below does nothing:
+          the endpoint only exists when a registry is on the classpath. It read as configured for
+          months and served 404.
+        -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!--
+          Micrometer Tracing over OpenTelemetry, exported as OTLP. Spring Cloud Sleuth is gone;
+          this is its replacement (see plan §1.6).
+
+          micrometer-registry-otlp is excluded deliberately. The starter drags it in for OTLP
+          *metrics*, which Boot then auto-configures to push to localhost:4318 every step - this
+          project scrapes Prometheus instead, so it would be a connection error per minute per
+          service, forever, reporting a problem that does not exist.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-opentelemetry</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>io.micrometer</groupId>
+                    <artifactId>micrometer-registry-otlp</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-stream-binder-kafka</artifactId>

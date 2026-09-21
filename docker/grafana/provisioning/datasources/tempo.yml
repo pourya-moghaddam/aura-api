@@ -1,0 +1,17 @@
+apiVersion: 1
+
+datasources:
+  - name: Tempo
+    type: tempo
+    access: proxy
+    uid: tempo
+    url: http://tempo:3200
+    jsonData:
+      # The join that makes this worth having: from a slow span, jump straight to the metrics for
+      # that service over the same window, rather than reconstructing the time range by hand.
+      tracesToMetrics:
+        datasourceUid: prometheus
+        spanStartTimeShift: -5m
+        spanEndTimeShift: 5m
+      serviceMap:
+        datasourceUid: prometheus

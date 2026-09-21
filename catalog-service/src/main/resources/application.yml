@@ -13,16 +13,31 @@ spring:
 
   jpa:
     hibernate:
-      # NOTE: this currently fails at startup - the Product entity maps a `price` column that the
-      # V1 migration does not create (price belongs on product_variants). Catalog's schema and
-      # entities are rebuilt together in Phase 3; leaving validation on so the mismatch cannot be
-      # forgotten.
+      # Flyway owns the schema; Hibernate only checks the entities agree with it. That check has
+      # earned its place twice - CHAR(n) against a varchar mapping crash-looped this service and
+      # media-service - so it stays on.
       ddl-auto: validate
     open-in-view: false
 
   flyway:
     enabled: true
     locations: classpath:db/migration
+
+  cloud:
+    stream:
+      kafka:
+        binder:
+          # Without this a trace stops dead at the producer: the span context is never written
+          # into the message headers, and the consumer starts a fresh trace with no idea what
+          # caused it. Checkout and the SMS it triggers then read as two unrelated stories.
+          enable-observation: true
+      bindings:
+        productChangedOut-out-0:
+          destination: ${aura.kafka.topics.product-changed:aura.catalog.product-changed.v1}
+          producer:
+            # Events for one product must land on one partition, or a redelivered older document
+            # can be indexed after a newer one. The header is set per message by the publisher.
+            partition-key-expression: headers['partitionKey']
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
@@ -35,12 +50,66 @@ eureka:
     prefer-ip-address: true
 
 aura:
+  catalog:
+    internal:
+      # Shared secret for /api/internal/**, which order-service uses to hold and settle stock.
+      # No default: an unset key makes every internal call fail closed rather than pass.
+      api-key: ${AURA_INTERNAL_API_KEY:}
+    inventory:
+      # How often abandoned stock holds are swept up. Short, because the stock is unsellable until
+      # it happens.
+      expiry-sweep-interval: ${AURA_STOCK_SWEEP_INTERVAL:PT30S}
+    media:
+      # Direct, not via the gateway: the gateway authenticates traffic arriving from outside, and
+      # routing an internal call through it adds a hop and a second thing that can be down.
+      base-url: ${AURA_MEDIA_BASE_URL:http://localhost:8084}
   security:
     jwt:
       jwk-set-uri: ${AURA_JWKS_URI:http://localhost:8081/api/auth/.well-known/jwks.json}
       issuer: ${AURA_TOKEN_ISSUER:http://localhost:8081}
 
 management:
+  # Actuator moves off the application port onto its own, and that port is never published.
+  # Metrics carry business shape - order counts, queue depth, error rates - and "/actuator is not
+  # reachable from outside" becomes structural rather than a rule someone has to keep enforcing in
+  # every service's security config. It also means the gateway cannot route to it by accident.
+  server:
+    port: 9091
+  observations:
+    enable:
+      # Spring Security emits a span per filter chain, per authorize call, per secured request -
+      # six of the twenty-four spans in a checkout trace, none of which say anything about the
+      # checkout. Worse, suppressing an actuator request's *server* span leaves these behind as
+      # orphans, so Tempo lists them as separate root traces and the trace list fills with
+      # "security filterchain before" from monitoring traffic nobody asked to trace.
+      spring.security: false
+  tracing:
+    sampling:
+      # Everything, in development, because a trace you did not sample is the one you wanted.
+      # compose.prod.yaml turns this down: at real traffic the cost is not the sampling, it is
+      # storing and searching what was sampled.
+      probability: ${AURA_TRACING_SAMPLE_RATE:1.0}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          # Tempo. Grafana reads from it, so a trace and the dashboards that led you to it live in
+          # the same place.
+          endpoint: ${AURA_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+  metrics:
+    distribution:
+      # Without this Micrometer publishes only a count and a sum for request timings, so any
+      # percentile query returns nothing at all - the dashboard panel renders empty and reads as
+      # "no traffic" rather than "no data". A mean hides the case that matters: it stays flat while
+      # one shopper in twenty waits eight seconds for checkout.
+      percentiles-histogram:
+        http.server.requests: true
+      # Bounded on purpose. An unbounded histogram is one series per bucket per endpoint per
+      # status, which is how a metrics endpoint quietly becomes the slowest thing in the service.
+      minimum-expected-value:
+        http.server.requests: 10ms
+      maximum-expected-value:
+        http.server.requests: 10s
   endpoints:
     web:
       exposure:

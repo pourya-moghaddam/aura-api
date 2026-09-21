@@ -42,3 +42,6 @@ build/
 
 ### Local scratch ###
 conv.txt
+
+# Database dumps and object-storage copies. Never in git: they contain customer data.
+backups/

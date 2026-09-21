@@ -1,0 +1,84 @@
+{
+  "title": "Aura — services",
+  "uid": "aura-services",
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Up",
+      "description": "One row per service. This is the panel to look at first: a scrape that stopped answering shows here before anything else does.",
+      "gridPos": {"h": 5, "w": 24, "x": 0, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {"type": "value", "options": {"0": {"text": "DOWN", "color": "red", "index": 0}}},
+            {"type": "value", "options": {"1": {"text": "up", "color": "green", "index": 1}}}
+          ],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+        }
+      },
+      "options": {"colorMode": "background", "textMode": "value_and_name"},
+      "targets": [
+        {"expr": "up{job=\"aura\"}", "legendFormat": "{{service}}", "refId": "A"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests per second",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 5},
+      "fieldConfig": {"defaults": {"unit": "reqps"}},
+      "targets": [
+        {"expr": "sum by (service) (rate(http_server_requests_seconds_count{job=\"aura\"}[5m]))", "legendFormat": "{{service}}", "refId": "A"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Server errors per second",
+      "description": "5xx only. 4xx is largely shoppers mistyping things and drowns out the responses that are actually the shop's fault.",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 5},
+      "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"fillOpacity": 20}}},
+      "targets": [
+        {"expr": "sum by (service) (rate(http_server_requests_seconds_count{job=\"aura\",status=~\"5..\"}[5m]))", "legendFormat": "{{service}}", "refId": "A"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Request latency, 95th percentile",
+      "description": "The 95th rather than the mean: an average stays flat while one shopper in twenty waits eight seconds for checkout.",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 13},
+      "fieldConfig": {"defaults": {"unit": "s"}},
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum by (service, le) (rate(http_server_requests_seconds_bucket{job=\"aura\"}[5m])))", "legendFormat": "{{service}}", "refId": "A"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "JVM heap used",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 13},
+      "fieldConfig": {"defaults": {"unit": "bytes"}},
+      "targets": [
+        {"expr": "sum by (service) (jvm_memory_used_bytes{job=\"aura\",area=\"heap\"})", "legendFormat": "{{service}}", "refId": "A"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Database connections in use",
+      "description": "A pool sitting at its ceiling is the shape a slow query takes before it becomes an outage.",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 21},
+      "targets": [
+        {"expr": "hikaricp_connections_active{job=\"aura\"}", "legendFormat": "{{service}}", "refId": "A"},
+        {"expr": "hikaricp_connections_pending{job=\"aura\"}", "legendFormat": "{{service}} (waiting)", "refId": "B"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Log events per second, warn and error",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 21},
+      "targets": [
+        {"expr": "sum by (service, level) (rate(logback_events_total{job=\"aura\",level=~\"warn|error\"}[5m]))", "legendFormat": "{{service}} {{level}}", "refId": "A"}
+      ]
+    }
+  ]
+}

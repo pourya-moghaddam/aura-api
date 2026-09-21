@@ -11,6 +11,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
  * Catalog reads are public — that is the storefront. Everything else requires a token, and the
@@ -26,8 +27,42 @@ import org.springframework.security.web.SecurityFilterChain;
 public class SecurityConfig {
 
     private final AuraJwtAuthenticationConverter jwtAuthenticationConverter;
+    private final InternalApiProperties internalApiProperties;
+
+    /**
+     * Anonymous storefront reads, in their own chain so they can be cached.
+     *
+     * <p>Spring Security writes {@code Cache-Control: no-cache, no-store, must-revalidate} on every
+     * response by default, and it wins over whatever a controller sets — so the one-minute TTL on
+     * the homepage slider was being discarded silently. The header looked right in the code and
+     * never reached a browser.
+     *
+     * <p>Disabling that writer only here, rather than globally, is the point: these responses are
+     * public catalogue data served to anonymous callers, and there is nothing user-specific in
+     * them. Turning it off for the whole service would let a proxy cache an authenticated seller's
+     * draft listings.
+     */
+    @Bean
+    @org.springframework.core.annotation.Order(1)
+    public SecurityFilterChain publicCatalogFilterChain(HttpSecurity http) throws Exception {
+        http
+            // HEAD as well as GET: caches and proxies use HEAD to revalidate, and matching only
+            // GET sent those to the authenticated chain, where a public storefront path 401s.
+            .securityMatcher(request ->
+                (HttpMethod.GET.matches(request.getMethod())
+                    || HttpMethod.HEAD.matches(request.getMethod()))
+                    && request.getRequestURI().startsWith("/api/catalog/"))
+            .csrf(AbstractHttpConfigurer::disable)
+            .cors(AbstractHttpConfigurer::disable)
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+            .headers(headers -> headers.cacheControl(cache -> cache.disable()));
+
+        return http.build();
+    }
 
     @Bean
+    @org.springframework.core.annotation.Order(2)
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
             .csrf(AbstractHttpConfigurer::disable)
@@ -35,10 +70,24 @@ public class SecurityConfig {
             .cors(AbstractHttpConfigurer::disable)
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
+                // Everything under /actuator, and only because it no longer answers on this
+                // port at all: management.server.port moves it to 9091, which is never published.
+                // Permitting it here is what lets Prometheus scrape over the Docker network.
+                .requestMatchers("/actuator/**").permitAll()
+                // The API description and the page that renders it. Public in development so a
+                // frontend developer can read it without a token; compose.prod.yaml switches
+                // springdoc off entirely rather than relying on this being locked down.
+                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/catalog/**").permitAll()
+                .requestMatchers(HttpMethod.HEAD, "/api/catalog/**").permitAll()
+                // Not open: authenticated by the API-key filter below, which runs first and
+                // rejects anything without the shared key. These carry no user identity at all,
+                // because guest checkout means there may not be one.
+                .requestMatchers("/api/internal/**").permitAll()
                 .anyRequest().authenticated()
             )
+            .addFilterBefore(new InternalApiKeyFilter(internalApiProperties),
+                UsernamePasswordAuthenticationFilter.class)
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
             );

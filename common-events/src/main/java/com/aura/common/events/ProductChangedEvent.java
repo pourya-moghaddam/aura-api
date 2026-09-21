@@ -1,0 +1,78 @@
+package com.aura.common.events;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * Emitted by catalog-service whenever a product's searchable shape changes.
+ *
+ * <p>Carries the whole denormalised document rather than an id. Search-service is a separate
+ * service with its own datastore; an id-only event would mean it calls back to catalog for every
+ * message, which turns a catalogue-wide reindex into a stampede and makes indexing fail whenever
+ * catalog is down. The trade is a larger message, which Kafka does not care about.
+ *
+ * @param version   the product's {@code updated_at} as epoch millis, indexed with Elasticsearch's
+ *                  {@code version_type: external}. Kafka only orders within a partition, and a
+ *                  redelivery can arrive after a newer write; without this an old document
+ *                  silently overwrites a newer one and the index is wrong until the next edit.
+ * @param deleted   true when the product should leave the index — archived or removed. A separate
+ *                  flag rather than a separate event so ordering between "changed" and "deleted"
+ *                  is preserved by the same partition key.
+ * @param attributes field slug to chosen value slugs, the shape the storefront's facets aggregate
+ *                  on.
+ */
+public record ProductChangedEvent(
+    UUID eventId,
+    Instant occurredAt,
+    Long productId,
+    Long sellerId,
+    Long categoryId,
+    /** Ancestor ids, root first. Lets search answer "everything under Clothing" without the tree. */
+    List<Long> categoryPath,
+    /**
+     * The same ancestors as names, root first. Sent so search can match a query against the
+     * category a product sits in — "کیف چرم" should find a leather bag filed under Bags — without
+     * holding a copy of the tree or calling back per document.
+     */
+    List<String> categoryNames,
+    String name,
+    String slug,
+    String description,
+    String status,
+    Long minPrice,
+    Long maxPrice,
+    /**
+     * The pre-sale price of the variant that sets {@link #minPrice}, or null when that variant is
+     * not discounted.
+     *
+     * <p>Paired with {@code minPrice} rather than being an aggregate of its own. A listing card
+     * shows "from {@code minPrice}", so the struck-through figure beside it has to be the former
+     * price of <em>that same variant</em>. Taking the highest compare-at across all variants would
+     * advertise a saving against a price the shopper was never offered.
+     *
+     * <p>Null rather than equal-to-price when nothing is discounted, so "is this on sale" is a null
+     * check instead of a comparison every consumer has to remember to make.
+     */
+    Long compareAtPrice,
+    Integer totalStock,
+    Map<String, List<String>> attributes,
+    List<String> colorNames,
+    List<String> sizeNames,
+    UUID primaryMediaId,
+    /**
+     * When the product was first listed. Distinct from {@code version}, which tracks edits — a
+     * "newest first" sort built on the latter would put a corrected typo above a product listed
+     * this morning.
+     */
+    java.time.Instant createdAt,
+    long version,
+    boolean deleted
+) implements DomainEvent {
+
+    /** Partition key. Every event for one product goes to the same partition, so they stay ordered. */
+    public String partitionKey() {
+        return String.valueOf(productId);
+    }
+}

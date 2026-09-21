@@ -41,6 +41,15 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
+        <!--
+          Explicit: spring-boot-starter-web does NOT bring RestClient's auto-configuration in Boot
+          4, which split it into its own module. Without this there is no RestClient.Builder bean
+          and the context fails to start - and nothing about the compile would have told you.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-restclient</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
@@ -52,6 +61,47 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!--
+          The 3.x line, pinned in the parent: 2.x targets Boot 3 and does not survive the module
+          split. notification-service does not have this - it consumes events and serves no API.
+        -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
+        </dependency>
+
+        <!--
+          Without this the `prometheus` entry in the actuator exposure list below does nothing:
+          the endpoint only exists when a registry is on the classpath. It read as configured for
+          months and served 404.
+        -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!--
+          Micrometer Tracing over OpenTelemetry, exported as OTLP. Spring Cloud Sleuth is gone;
+          this is its replacement (see plan §1.6).
+
+          micrometer-registry-otlp is excluded deliberately. The starter drags it in for OTLP
+          *metrics*, which Boot then auto-configures to push to localhost:4318 every step - this
+          project scrapes Prometheus instead, so it would be a connection error per minute per
+          service, forever, reporting a problem that does not exist.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-opentelemetry</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>io.micrometer</groupId>
+                    <artifactId>micrometer-registry-otlp</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <dependency>
@@ -103,6 +153,30 @@
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!--
+          Boot 4 splits the test slices out too: @DataJpaTest lives in spring-boot-data-jpa-test
+          and @AutoConfigureTestDatabase in spring-boot-jdbc-test. starter-test brings neither.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-data-jpa-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-jdbc-test</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

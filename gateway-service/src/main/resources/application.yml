@@ -18,6 +18,41 @@ spring:
       server:
         webflux:
           routes:
+            # The API descriptions, gathered behind one origin. Without these the browser
+            # fetches each service's document from its own port, which is both a CORS problem and
+            # a set of addresses that do not exist in production, where nothing but the gateway is
+            # published.
+            - id: auth-docs
+              uri: lb://AUTH-SERVICE
+              predicates:
+                - Path=/api-docs/auth
+              filters:
+                - SetPath=/v3/api-docs
+            - id: catalog-docs
+              uri: lb://CATALOG-SERVICE
+              predicates:
+                - Path=/api-docs/catalog
+              filters:
+                - SetPath=/v3/api-docs
+            - id: order-docs
+              uri: lb://ORDER-SERVICE
+              predicates:
+                - Path=/api-docs/order
+              filters:
+                - SetPath=/v3/api-docs
+            - id: media-docs
+              uri: lb://MEDIA-SERVICE
+              predicates:
+                - Path=/api-docs/media
+              filters:
+                - SetPath=/v3/api-docs
+            - id: search-docs
+              uri: lb://SEARCH-SERVICE
+              predicates:
+                - Path=/api-docs/search
+              filters:
+                - SetPath=/v3/api-docs
+
             - id: auth-service
               uri: lb://AUTH-SERVICE
               predicates:
@@ -43,10 +78,63 @@ spring:
                     redis-rate-limiter.replenishRate: 30
                     redis-rate-limiter.burstCapacity: 60
 
+            - id: search-service
+              uri: lb://SEARCH-SERVICE
+              predicates:
+                - Path=/api/search/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@userKeyResolver}"
+                    # Higher than the catalogue's: a shopper types, and every keystroke can be a
+                    # request. Throttling as-you-type search to browsing speed makes the box feel
+                    # broken rather than protected.
+                    redis-rate-limiter.replenishRate: 60
+                    redis-rate-limiter.burstCapacity: 120
+
+            # Without this the reindex endpoint is unreachable: /api/control/** passes the audience
+            # check in GatewaySecurityConfig and then matches no route, so an authorised admin gets
+            # a 404 that reads like a missing endpoint rather than a missing route.
+            - id: search-service-control
+              uri: lb://SEARCH-SERVICE
+              predicates:
+                - Path=/api/control/search/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@userKeyResolver}"
+                    redis-rate-limiter.replenishRate: 20
+                    redis-rate-limiter.burstCapacity: 40
+
             - id: catalog-service-control
               uri: lb://CATALOG-SERVICE
               predicates:
                 - Path=/api/control/catalog/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@userKeyResolver}"
+                    redis-rate-limiter.replenishRate: 20
+                    redis-rate-limiter.burstCapacity: 40
+
+            - id: order-service
+              uri: lb://ORDER-SERVICE
+              predicates:
+                # Anonymous by design: requirement 12 makes guests first-class buyers, so cart and
+                # checkout carry no audience requirement. What protects a guest's cart is the
+                # unguessable token in their cookie, not a token.
+                - Path=/api/orders/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@ipKeyResolver}"
+                    redis-rate-limiter.replenishRate: 20
+                    redis-rate-limiter.burstCapacity: 40
+
+            - id: order-service-control
+              uri: lb://ORDER-SERVICE
+              predicates:
+                - Path=/api/control/orders/**
               filters:
                 - name: RequestRateLimiter
                   args:
@@ -83,7 +171,66 @@ aura:
       jwk-set-uri: ${AURA_JWKS_URI:http://localhost:8081/api/auth/.well-known/jwks.json}
       issuer: ${AURA_TOKEN_ISSUER:http://localhost:8081}
 
+springdoc:
+  # The gateway serves the page; each entry points at a route defined above. Listing them by hand
+  # rather than discovering them from Eureka, for the same reason Prometheus uses static targets:
+  # documentation that disappears when the registry hiccups is documentation you cannot trust.
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: auth-service
+        url: /api-docs/auth
+      - name: catalog-service
+        url: /api-docs/catalog
+      - name: order-service
+        url: /api-docs/order
+      - name: media-service
+        url: /api-docs/media
+      - name: search-service
+        url: /api-docs/search
+
 management:
+  # Actuator moves off the application port onto its own, and that port is never published.
+  # Metrics carry business shape - order counts, queue depth, error rates - and "/actuator is not
+  # reachable from outside" becomes structural rather than a rule someone has to keep enforcing in
+  # every service's security config. It also means the gateway cannot route to it by accident.
+  server:
+    port: 9091
+  observations:
+    enable:
+      # Spring Security emits a span per filter chain, per authorize call, per secured request -
+      # six of the twenty-four spans in a checkout trace, none of which say anything about the
+      # checkout. Worse, suppressing an actuator request's *server* span leaves these behind as
+      # orphans, so Tempo lists them as separate root traces and the trace list fills with
+      # "security filterchain before" from monitoring traffic nobody asked to trace.
+      spring.security: false
+  tracing:
+    sampling:
+      # Everything, in development, because a trace you did not sample is the one you wanted.
+      # compose.prod.yaml turns this down: at real traffic the cost is not the sampling, it is
+      # storing and searching what was sampled.
+      probability: ${AURA_TRACING_SAMPLE_RATE:1.0}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          # Tempo. Grafana reads from it, so a trace and the dashboards that led you to it live in
+          # the same place.
+          endpoint: ${AURA_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+  metrics:
+    distribution:
+      # Without this Micrometer publishes only a count and a sum for request timings, so any
+      # percentile query returns nothing at all - the dashboard panel renders empty and reads as
+      # "no traffic" rather than "no data". A mean hides the case that matters: it stays flat while
+      # one shopper in twenty waits eight seconds for checkout.
+      percentiles-histogram:
+        http.server.requests: true
+      # Bounded on purpose. An unbounded histogram is one series per bucket per endpoint per
+      # status, which is how a metrics endpoint quietly becomes the slowest thing in the service.
+      minimum-expected-value:
+        http.server.requests: 10ms
+      maximum-expected-value:
+        http.server.requests: 10s
   endpoints:
     web:
       exposure:

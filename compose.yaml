@@ -25,6 +25,7 @@ x-app-env: &app-env
   DB_PASSWORD: ${POSTGRES_PASSWORD:-aura}
   REDIS_HOST: redis
   REDIS_PORT: "6379"
+  AURA_OTLP_ENDPOINT: http://tempo:4318/v1/traces
   KAFKA_BOOTSTRAP_SERVERS: kafka:9092
   EUREKA_URL: http://discovery-service:8761/eureka/
   AURA_JWKS_URI: http://auth-service:8081/api/auth/.well-known/jwks.json
@@ -157,7 +158,7 @@ services:
     ports:
       - "8761:8761"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8761/actuator/health || exit 1"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:9091/actuator/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -177,6 +178,9 @@ services:
       AURA_AUTH_TOKEN_RSA_PUBLIC_KEY_PEM: ${AURA_AUTH_TOKEN_RSA_PUBLIC_KEY_PEM:-}
       AURA_SUPERADMIN_PHONE: ${AURA_SUPERADMIN_PHONE:-}
       AURA_SUPERADMIN_PASSWORD: ${AURA_SUPERADMIN_PASSWORD:-}
+      # Local development only, and empty unless deliberately set. Present in this file and NOT in
+      # compose.prod.yaml on purpose: auth-service refuses to start with it under the prod profile.
+      AURA_OTP_DEV_CODE: ${AURA_OTP_DEV_CODE:-}
     ports:
       - "8081:8081"
     depends_on:
@@ -185,7 +189,7 @@ services:
       kafka: {condition: service_healthy}
       discovery-service: {condition: service_healthy}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8081/actuator/health/readiness || exit 1"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:9091/actuator/health/readiness || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -201,14 +205,46 @@ services:
     environment:
       <<: *app-env
       DB_NAME: catalog
+      AURA_MEDIA_BASE_URL: http://media-service:8084
+      AURA_INTERNAL_API_KEY: ${AURA_INTERNAL_API_KEY:?set AURA_INTERNAL_API_KEY in .env}
     ports:
       - "8083:8083"
     depends_on:
       postgres: {condition: service_healthy}
       kafka: {condition: service_healthy}
       discovery-service: {condition: service_healthy}
+      # Attaching media to a product asks media-service whether the file is servable and whose it
+      # is, so publishing depends on it being up. Deliberately fails closed.
+      media-service: {condition: service_healthy}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8083/actuator/health/readiness || exit 1"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:9091/actuator/health/readiness || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  order-service:
+    <<: *service-defaults
+    build:
+      context: .
+      args:
+        SERVICE: order-service
+    image: aura/order-service:${TAG:-dev}
+    environment:
+      <<: *app-env
+      DB_NAME: orders
+      AURA_CATALOG_BASE_URL: http://catalog-service:8083
+      AURA_INTERNAL_API_KEY: ${AURA_INTERNAL_API_KEY:?set AURA_INTERNAL_API_KEY in .env}
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      discovery-service: {condition: service_healthy}
+      # Checkout holds stock through catalog's internal API, so it cannot complete without it.
+      catalog-service: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9091/actuator/health/readiness || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -242,7 +278,35 @@ services:
       minio: {condition: service_healthy}
       discovery-service: {condition: service_healthy}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8084/actuator/health/readiness || exit 1"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:9091/actuator/health/readiness || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  search-service:
+    <<: *service-defaults
+    build:
+      context: .
+      args:
+        SERVICE: search-service
+    image: aura/search-service:${TAG:-dev}
+    environment:
+      <<: *app-env
+      ELASTICSEARCH_URI: http://elasticsearch:9200
+      # Creates products_v1 behind the alias on a cold cluster. Something to reconsider in
+      # production, where index creation is usually a deliberate act rather than a deploy side
+      # effect.
+      AURA_SEARCH_INDEX_BOOTSTRAP: ${AURA_SEARCH_INDEX_BOOTSTRAP:-true}
+    ports:
+      - "8085:8085"
+    depends_on:
+      elasticsearch: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      discovery-service: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9091/actuator/health/readiness || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -257,14 +321,18 @@ services:
     image: aura/notification-service:${TAG:-dev}
     environment:
       <<: *app-env
+      DB_NAME: notification
+      AURA_SMS_MODE: ${AURA_SMS_MODE:-mock}
       SMS_IR_API_KEY: ${SMS_IR_API_KEY:-}
       SMS_IR_OTP_TEMPLATE_ID: ${SMS_IR_OTP_TEMPLATE_ID:-}
+      SMS_IR_LINE_NUMBER: ${SMS_IR_LINE_NUMBER:-}
     # Intentionally not published: event-driven, no public API, and it spends money when called.
     depends_on:
+      postgres: {condition: service_healthy}
       kafka: {condition: service_healthy}
       discovery-service: {condition: service_healthy}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8082/actuator/health/readiness || exit 1"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:9091/actuator/health/readiness || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -286,11 +354,75 @@ services:
       discovery-service: {condition: service_healthy}
       auth-service: {condition: service_healthy}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8080/actuator/health/readiness || exit 1"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:9091/actuator/health/readiness || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 40s
+
+  # ---------------------------------------------------------------------------------------------
+  # Observability
+  #
+  # Both scrape and read over the Docker network only. Their own ports are published so a developer
+  # can open them, but nothing they talk to is: every service's actuator lives on 9091, which no
+  # service publishes.
+  # ---------------------------------------------------------------------------------------------
+  tempo:
+    image: grafana/tempo:2.7.1
+    restart: unless-stopped
+    networks: [aura]
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./docker/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    # Not published. Nothing outside the network sends traces, and Grafana is how they are read.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:3200/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    restart: unless-stopped
+    networks: [aura]
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # Long enough to see a week-on-week pattern, short enough that a laptop survives it.
+      - --storage.tsdb.retention.time=15d
+    ports: ["9090:9090"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:9090/-/healthy || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  grafana:
+    image: grafana/grafana:11.5.1
+    restart: unless-stopped
+    networks: [aura]
+    environment:
+      # Anonymous view access, because this stack is a laptop and a login prompt in front of a
+      # dashboard nobody can change is friction without a benefit. compose.prod.yaml sets a real
+      # admin password and turns this off.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports: ["3000:3000"]
+    depends_on:
+      prometheus: {condition: service_healthy}
+      tempo: {condition: service_healthy}
 
 networks:
   aura:
@@ -302,3 +434,6 @@ volumes:
   kafka_data:
   elasticsearch_data:
   minio_data:
+  prometheus_data:
+  grafana_data:
+  tempo_data:

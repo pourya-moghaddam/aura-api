@@ -27,6 +27,12 @@ spring:
 
   cloud:
     stream:
+      kafka:
+        binder:
+          # Without this a trace stops dead at the producer: the span context is never written
+          # into the message headers, and the consumer starts a fresh trace with no idea what
+          # caused it. Checkout and the SMS it triggers then read as two unrelated stories.
+          enable-observation: true
       bindings:
         otpRequestedOut-out-0:
           destination: ${aura.kafka.topics.otp-requested}
@@ -47,6 +53,47 @@ logging:
     com.aura: DEBUG
 
 management:
+  # Actuator moves off the application port onto its own, and that port is never published.
+  # Metrics carry business shape - order counts, queue depth, error rates - and "/actuator is not
+  # reachable from outside" becomes structural rather than a rule someone has to keep enforcing in
+  # every service's security config. It also means the gateway cannot route to it by accident.
+  server:
+    port: 9091
+  observations:
+    enable:
+      # Spring Security emits a span per filter chain, per authorize call, per secured request -
+      # six of the twenty-four spans in a checkout trace, none of which say anything about the
+      # checkout. Worse, suppressing an actuator request's *server* span leaves these behind as
+      # orphans, so Tempo lists them as separate root traces and the trace list fills with
+      # "security filterchain before" from monitoring traffic nobody asked to trace.
+      spring.security: false
+  tracing:
+    sampling:
+      # Everything, in development, because a trace you did not sample is the one you wanted.
+      # compose.prod.yaml turns this down: at real traffic the cost is not the sampling, it is
+      # storing and searching what was sampled.
+      probability: ${AURA_TRACING_SAMPLE_RATE:1.0}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          # Tempo. Grafana reads from it, so a trace and the dashboards that led you to it live in
+          # the same place.
+          endpoint: ${AURA_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+  metrics:
+    distribution:
+      # Without this Micrometer publishes only a count and a sum for request timings, so any
+      # percentile query returns nothing at all - the dashboard panel renders empty and reads as
+      # "no traffic" rather than "no data". A mean hides the case that matters: it stays flat while
+      # one shopper in twenty waits eight seconds for checkout.
+      percentiles-histogram:
+        http.server.requests: true
+      # Bounded on purpose. An unbounded histogram is one series per bucket per endpoint per
+      # status, which is how a metrics endpoint quietly becomes the slowest thing in the service.
+      minimum-expected-value:
+        http.server.requests: 10ms
+      maximum-expected-value:
+        http.server.requests: 10s
   endpoints:
     web:
       exposure:
@@ -71,6 +118,11 @@ aura:
       max-per-day-global: 2000
       # HMAC key for hashing codes at rest. Startup fails under the prod profile if unset.
       pepper: ${AURA_AUTH_OTP_PEPPER:}
+      # DEVELOPMENT ONLY, and empty by default. Codes are hashed at rest and never logged, so
+      # locally there is otherwise no way to finish a sign-in without a live SMS provider. When
+      # set, this value is accepted in addition to the real code - a code must still have been
+      # requested and still be unexpired. Startup FAILS under the prod profile if it is set.
+      dev-code: ${AURA_OTP_DEV_CODE:}
       otp-binding-name: "otpRequestedOut-out-0"
     token:
       issuer: ${AURA_TOKEN_ISSUER:http://localhost:8081}
